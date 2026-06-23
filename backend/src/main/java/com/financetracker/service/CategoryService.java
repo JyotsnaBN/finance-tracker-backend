@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Optional;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -101,15 +102,17 @@ public class CategoryService {
             return getOrCreateDefaultCategory();
         }
         
-        String lowerDesc = description.toLowerCase();
+        String lowerDesc = description.toLowerCase().trim();
         log.debug("Categorizing transaction: {}", description);
+        
+        String cleanDesc = cleanMerchantName(lowerDesc);
         
         for (Map.Entry<String, List<String>> entry : CategoryKeywords.CATEGORY_KEYWORDS.entrySet()) {
             String categoryName = entry.getKey();
             List<String> keywords = entry.getValue();
             
             for (String keyword : keywords) {
-                if (lowerDesc.contains(keyword)) {
+                if (containsKeyword(cleanDesc, keyword)) {
                     Optional<Category> category = categoryRepository.findByName(categoryName);
                     if (category.isPresent()) {
                         log.debug("Categorized '{}' as '{}' using keyword '{}'", 
@@ -125,6 +128,18 @@ public class CategoryService {
         
         log.debug("No category match found for: {}", description);
         return getOrCreateDefaultCategory();
+    }
+
+    private String cleanMerchantName(String description) {
+        return description
+            .replaceAll("\\s+(ltd|limited|pvt|private|inc|corp|corporation|llc|llp|limit)\\b", "")
+            .replaceAll("[^a-z0-9\\s]", " ")
+            .replaceAll("\\s+", " ")
+            .trim();
+    }
+
+    private boolean containsKeyword(String description, String keyword) {
+        return description.contains(keyword.toLowerCase());
     }
 
     private Category getOrCreateDefaultCategory() {

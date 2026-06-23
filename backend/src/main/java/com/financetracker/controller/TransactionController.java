@@ -2,6 +2,8 @@ package com.financetracker.controller;
 
 import com.financetracker.dto.TransactionDTO;
 import com.financetracker.service.TransactionService;
+import com.financetracker.dto.BulkTransactionRequestDTO;
+import com.financetracker.dto.BulkTransactionResponseDTO;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +39,13 @@ public class TransactionController {
     @PostMapping
     public ResponseEntity<TransactionDTO> createTransaction(@Valid @RequestBody TransactionDTO dto) {
         return new ResponseEntity<>(transactionService.createTransaction(dto), HttpStatus.CREATED);
+    }
+
+    @PostMapping("/bulk")
+    public ResponseEntity<BulkTransactionResponseDTO> createBulkTransactions(
+            @Valid @RequestBody BulkTransactionRequestDTO request) {
+        BulkTransactionResponseDTO response = transactionService.createBulkTransactions(request);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
     
     @PutMapping("/{id}")

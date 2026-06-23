@@ -11,7 +11,6 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -61,6 +60,19 @@ public class Transaction {
 
     @Column(name = "transaction_date", nullable = false)
     private Instant transactionDate;
+    
+    @Column(name = "is_deleted", nullable = false)
+    @Builder.Default
+    private Boolean isDeleted = false;
+    
+    @Column(name = "last_modified", nullable = false)
+    @UpdateTimestamp
+    private Instant lastModified;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(name = "parsing_status")
+    @Builder.Default
+    private ParsingStatus parsingStatus = ParsingStatus.SUCCESS;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     @CreationTimestamp
@@ -69,4 +81,11 @@ public class Transaction {
     @Column(name = "updated_at", nullable = false)
     @UpdateTimestamp
     private Instant updatedAt;
+
+    @Column(name = "available_limit_at_transaction")
+    private BigDecimal availableLimitAtTransaction;
+
+    @Column(name = "delivery_metadata", columnDefinition = "TEXT")
+    private String deliveryMetadata;
+
 }

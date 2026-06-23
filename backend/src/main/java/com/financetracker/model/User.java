@@ -1,13 +1,14 @@
 package com.financetracker.model;
 
 import java.time.Instant;
+import java.util.UUID;
 
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.GenericGenerator;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -21,15 +22,18 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.util.UUID;
-
 @Entity
 @Table(name = "users")
 @Getter @Setter @Builder
 @NoArgsConstructor @AllArgsConstructor
 public class User {
-    @Id @GeneratedValue(strategy = GenerationType.AUTO)
-    @Column(columnDefinition = "uuid")
+    @Id
+    @GeneratedValue(generator = "UUID")
+    @GenericGenerator(
+        name = "UUID",
+        strategy = "org.hibernate.id.UUIDGenerator"
+    )
+    @Column(name = "id", updatable = false, nullable = false, columnDefinition = "uuid")
     private UUID id;
 
     @Column(name = "username", nullable = false)

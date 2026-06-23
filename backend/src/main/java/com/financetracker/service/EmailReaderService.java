@@ -5,6 +5,9 @@ import com.financetracker.model.*;
 import com.financetracker.repository.*;
 import com.financetracker.util.EncryptionUtil;
 import com.financetracker.util.TransactionParsingUtil;
+import com.financetracker.dto.DeliveryMetadataDTO;
+import com.financetracker.dto.DeliveryEventDTO;
+import com.financetracker.util.DeliveryEmailParser;
 
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp;
@@ -26,6 +29,9 @@ import com.google.api.services.gmail.model.MessagePart;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -42,6 +48,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.math.BigDecimal;
+import java.util.Comparator;
 
 @Service
 @Slf4j
@@ -81,6 +89,298 @@ public class EmailReaderService {
     private ObjectMapper objectMapper;
     
     private Gmail gmailService;
+
+    @Autowired
+    private DeliveryEmailParser deliveryEmailParser;
+
+    @EventListener(ApplicationReadyEvent.class)
+    @Order(2)
+    public void processDeliveryEmailsOnStartup() {
+        log.info("Scheduling delivery email processing to run 2 minutes after transaction processing...");
+        
+        new Thread(() -> {
+            try {
+                Thread.sleep(60000);
+                log.info("=== Starting delayed delivery email processing ===");
+                processDeliveryEmailsForAllUsers();
+                log.info("=== Delayed delivery email processing completed ===");
+            } catch (InterruptedException e) {
+                log.error("Delivery email processing was interrupted: {}", e.getMessage());
+                Thread.currentThread().interrupt();
+            } catch (Exception e) {
+                log.error("Failed to process delivery emails on startup: {}", e.getMessage());
+                log.debug("Startup delivery processing error details:", e);
+            }
+        }).start();
+    }
+
+    @Scheduled(fixedRate = 3600000)
+    public void processDeliveryEmailsForAllUsers() {
+        log.info("Starting delivery email processing for all users...");
+        
+        List<UserEmailConfig> activeConfigs = emailConfigRepository.findByIsActiveTrue();
+        
+        if (activeConfigs.isEmpty()) {
+            log.info("No active email configurations found for delivery processing");
+            return;
+        }
+        
+        log.info("Found {} active email configurations for delivery processing", activeConfigs.size());
+        
+        for (UserEmailConfig config : activeConfigs) {
+            try {
+                processUserDeliveryEmails(config);
+            } catch (Exception e) {
+                log.error("Failed to process delivery emails for user {}: {}",
+                    config.getUser().getId(), e.getMessage());
+                log.debug("Full error details:", e);
+            }
+        }
+        
+        log.info("Delivery email processing complete");
+    }
+
+    private void processUserDeliveryEmails(UserEmailConfig config) throws Exception {
+        User user = config.getUser();
+        log.info("=== Processing delivery emails for user: {} ({}) ===", user.getId(), config.getEmailAddress());
+        
+        Gmail service = getGmailServiceForUser(config);
+        
+        long twoDaysAgo = Instant.now().minus(2, ChronoUnit.DAYS).getEpochSecond();
+        
+        String query = String.format(
+            "after:%d (" +
+            "subject:delivered OR subject:\"delivery confirmation\" OR " +
+            "subject:\"package delivered\" OR subject:\"order\" OR " +
+            "subject:\"shipment delivered\" OR subject:\"has been delivered\" OR " +
+            "subject:\"successfully delivered\"" +
+            ")",
+            twoDaysAgo
+        );
+        
+        log.debug("Gmail query: {}", query);
+        
+        ListMessagesResponse response = service.users().messages()
+            .list("me")
+            .setQ(query)
+            .setMaxResults(50L)
+            .execute();
+        
+        List<Message> messages = response.getMessages();
+        
+        if (messages == null || messages.isEmpty()) {
+            log.warn("No delivery emails found for user: {}", user.getId());
+            return;
+        }
+        
+        log.info("Found {} potential delivery emails for user: {}", messages.size(), user.getId());
+        
+        int successCount = 0;
+        int skippedCount = 0;
+        int failureCount = 0;
+        
+        for (Message message : messages) {
+            try {
+                Message fullMessage = service.users().messages()
+                    .get("me", message.getId())
+                    .setFormat("full")
+                    .execute();
+                
+                String subject = getEmailSubject(fullMessage);
+                String emailContent = stripHtmlTags(getEmailBody(fullMessage));
+                
+                log.debug("Processing email ID: {}, Subject: {}", message.getId(), subject);
+                
+                if (!deliveryEmailParser.isDeliveryEmail(subject, emailContent)) {
+                    log.debug("Email {} is NOT a delivery email", message.getId());
+                    skippedCount++;
+                    continue;
+                }
+                
+                log.info("Email {} IS a delivery email - parsing...", message.getId());
+                log.info(emailContent);
+                
+                Instant emailReceivedDate = fullMessage.getInternalDate() != null 
+                    ? Instant.ofEpochMilli(fullMessage.getInternalDate())
+                    : null;
+
+                log.debug("Email metadata date: {}", emailReceivedDate);
+
+                DeliveryEventDTO deliveryEvent = deliveryEmailParser.parseDeliveryEmail(
+                    subject, emailContent, emailReceivedDate);
+
+                if (deliveryEvent == null) {
+                    log.warn("Could not parse delivery email {}", message.getId());
+                    failureCount++;
+                    continue;
+                }
+                
+                log.info("Parsed delivery - Tracking: {}, Merchant: {}, Items: {}", 
+                    deliveryEvent.getTrackingNumber(), 
+                    deliveryEvent.getMerchant(),
+                    deliveryEvent.getItemCount());
+                
+                if (deliveryEvent.getTrackingNumber() != null &&
+                    transactionRepository.existsByDeliveryTrackingNumber(deliveryEvent.getTrackingNumber())) {
+                    log.info("Delivery already processed - Tracking: {}", deliveryEvent.getTrackingNumber());
+                    skippedCount++;
+                    continue;
+                }
+                
+                BigDecimal amount = deliveryEmailParser.extractAmount(subject, emailContent);
+                
+                if (amount == null) {
+                    log.warn("Could not extract amount from email {}", message.getId());
+                    failureCount++;
+                    continue;
+                }
+                
+                log.info("Extracted amount: {} - Linking to transaction...", amount);
+                
+                boolean linked = linkDeliveryToTransaction(deliveryEvent, amount, user);
+                if (linked) {
+                    log.info("✓ Successfully linked delivery");
+                    successCount++;
+                } else {
+                    log.warn("✗ Failed to link delivery");
+                    failureCount++;
+                }
+                
+            } catch (Exception e) {
+                log.error("Failed to process delivery email {}: {}", message.getId(), e.getMessage());
+                failureCount++;
+            }
+        }
+        
+        log.info("=== User {} complete: Success: {}, Skipped: {}, Failures: {} ===",
+            user.getId(), successCount, skippedCount, failureCount);
+    }
+
+    @Transactional
+    private boolean linkDeliveryToTransaction(DeliveryEventDTO deliveryEvent, BigDecimal amount, User user) {
+        try {
+            Instant targetDate = deliveryEvent.getDeliveryDate();
+            Instant searchStart = targetDate.minus(2, ChronoUnit.HOURS);
+            Instant searchEnd = targetDate.plus(2, ChronoUnit.HOURS);
+            
+            log.debug("Searching for transaction - Amount: {}, Window: {} to {}", 
+                amount, searchStart, searchEnd);
+            
+            List<Transaction> candidates = transactionRepository
+                .findByUserIdAndAmountAndDateRangeOrderByClosestToTarget(
+                    user.getId(),
+                    amount,
+                    searchStart,
+                    searchEnd,
+                    targetDate
+                );
+            
+            log.debug("Found {} candidate transactions", candidates.size());
+            
+            if (candidates.isEmpty()) {
+                log.warn("No matching transaction found for delivery - User: {}, Amount: {}, Date: {}",
+                    user.getId(), amount, targetDate);
+                return false;
+            }
+            
+            Transaction transaction = candidates.stream()
+                .min(Comparator.comparing(t -> 
+                    Math.abs(t.getTransactionDate().getEpochSecond() - targetDate.getEpochSecond())))
+                .orElse(candidates.get(0));
+            
+            long timeDiff = Math.abs(transaction.getTransactionDate().getEpochSecond() - targetDate.getEpochSecond());
+            log.info("Found matching transaction {} - Amount: {}, Time diff: {} seconds ({} minutes)",
+                transaction.getId(), amount, timeDiff, timeDiff / 60);
+            
+            return updateTransactionWithDelivery(transaction, deliveryEvent);
+            
+        } catch (Exception e) {
+            log.error("Error linking delivery to transaction: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
+    @Transactional
+    private boolean updateTransactionWithDelivery(Transaction transaction, DeliveryEventDTO deliveryEvent) {
+        try {
+            log.debug("Updating transaction {} with delivery metadata", transaction.getId());
+            
+            DeliveryMetadataDTO metadata;
+            
+            if (transaction.getDeliveryMetadata() != null && !transaction.getDeliveryMetadata().isEmpty()) {
+                log.debug("Transaction already has delivery metadata - appending");
+                metadata = objectMapper.readValue(transaction.getDeliveryMetadata(), DeliveryMetadataDTO.class);
+            } else {
+                log.debug("Transaction has no delivery metadata - creating new");
+                metadata = new DeliveryMetadataDTO();
+            }
+            
+            int beforeCount = metadata.getDeliveries().size();
+            metadata.addDelivery(deliveryEvent);
+            int afterCount = metadata.getDeliveries().size();
+            
+            if (beforeCount == afterCount) {
+                log.warn("Delivery was NOT added (duplicate?) - Before: {}, After: {}", beforeCount, afterCount);
+                return false;
+            }
+            
+            String metadataJson = objectMapper.writeValueAsString(metadata);
+            log.debug("Delivery metadata JSON: {}", metadataJson);
+            
+            transaction.setDeliveryMetadata(metadataJson);
+            
+            String updatedDescription = buildDeliveryDescription(transaction.getDescription(), metadata);
+            log.debug("Updated description: {}", updatedDescription);
+            transaction.setDescription(TransactionParsingUtil.truncateString(updatedDescription, 255));
+            
+            Transaction saved = transactionRepository.save(transaction);
+            log.info("✓ Transaction {} saved - Tracking: {}, Items: {}, Total deliveries: {}",
+                saved.getId(),
+                deliveryEvent.getTrackingNumber(),
+                deliveryEvent.getItemCount(),
+                metadata.getDeliveries().size());
+            
+            String savedMetadata = saved.getDeliveryMetadata();
+            if (savedMetadata == null || savedMetadata.isEmpty()) {
+                log.error("✗ CRITICAL: delivery_metadata is NULL after save!");
+                return false;
+            }
+            
+            log.debug("Verified: delivery_metadata saved successfully");
+            return true;
+            
+        } catch (Exception e) {
+            log.error("Failed to update transaction with delivery: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
+    private String buildDeliveryDescription(String originalDescription, DeliveryMetadataDTO metadata) {
+        if (metadata.getDeliveries().isEmpty()) {
+            return originalDescription;
+        }
+        
+        int totalItems = metadata.getTotalItemCount();
+        int deliveryCount = metadata.getDeliveries().size();
+        
+        String cleanDesc = originalDescription.replaceAll("\\s*\\[.*delivered.*\\]", "");
+        
+        if (deliveryCount == 1) {
+            DeliveryEventDTO delivery = metadata.getDeliveries().get(0);
+            String dateStr = delivery.getDeliveryDate().toString().substring(0, 10);
+            
+            if (delivery.getStoreName() != null) {
+                return String.format("%s - %s [%d items delivered %s]",
+                    cleanDesc, delivery.getStoreName(), totalItems, dateStr);
+            } else {
+                return String.format("%s [%d items delivered %s]",
+                    cleanDesc, totalItems, dateStr);
+            }
+        } else {
+            return String.format("%s [%d deliveries, %d items total]",
+                cleanDesc, deliveryCount, totalItems);
+        }
+    }
     
     private Credential getCredentials(final NetHttpTransport HTTP_TRANSPORT) throws IOException {
         InputStream in = EmailReaderService.class.getResourceAsStream(CREDENTIALS_FILE_PATH);
@@ -188,7 +488,7 @@ public class EmailReaderService {
         
         Gmail service = getGmailServiceForUser(config);
         
-        long tenDaysAgo = Instant.now().minus(10, ChronoUnit.DAYS).getEpochSecond();
+        long tenDaysAgo = Instant.now().minus(30, ChronoUnit.DAYS).getEpochSecond();
         
         String query = String.format(
             "after:%d (" +
@@ -237,7 +537,8 @@ public class EmailReaderService {
                         .execute();
                 
                 String subject = getEmailSubject(fullMessage);
-                String emailContent = getEmailBody(fullMessage);
+                String emailContent = stripHtmlTags(getEmailBody(fullMessage));
+
                 String parseInput = buildEmailParseInput(subject, emailContent);
                 
                 log.debug("Processing email - Subject: {}", subject);
@@ -339,6 +640,7 @@ public class EmailReaderService {
                 .description(safeDescription)
                 .rawText(safeRawText)
                 .transactionDate(parsed.getTransactionDate() != null ? parsed.getTransactionDate() : Instant.now())
+                .availableLimitAtTransaction(parsed.getAvailableLimit())
                 .build();
             
             log.debug("Created transaction object: Amount={}, Type={}, Date={}",
@@ -600,37 +902,78 @@ public class EmailReaderService {
         
         try {
             if (message.getPayload() != null) {
-                MessagePart payload = message.getPayload();
-                
-                if (payload.getBody() != null && payload.getBody().getData() != null) {
+                extractTextFromPart(message.getPayload(), body);
+            }
+        } catch (Exception e) {
+            log.error("Error extracting email body: {}", e.getMessage(), e);
+        }
+        
+        String result = body.toString().trim();
+        if (result.isEmpty()) {
+            log.warn("Email body is empty after extraction");
+        }
+        return result;
+    }
+
+    private void extractTextFromPart(MessagePart part, StringBuilder body) {
+        if (part == null) {
+            return;
+        }
+        
+        try {
+            String mimeType = part.getMimeType();
+            log.debug("Processing part with MIME type: {}", mimeType);
+            
+            if (mimeType != null && (mimeType.startsWith("text/") || mimeType.equals("message/rfc822"))) {
+                if (part.getBody() != null && part.getBody().getData() != null) {
                     try {
-                        String data = payload.getBody().getData();
-                        body.append(new String(Base64.getUrlDecoder().decode(data)));
+                        String data = part.getBody().getData();
+                        String decoded = new String(Base64.getUrlDecoder().decode(data));
+                        body.append(decoded).append("\n");
+                        log.debug("Extracted {} characters from {}", decoded.length(), mimeType);
                     } catch (IllegalArgumentException e) {
-                        log.warn("Failed to decode email body data: {}", e.getMessage());
-                    }
-                }
-                
-                if (payload.getParts() != null) {
-                    for (MessagePart part : payload.getParts()) {
-                        try {
-                            if (part.getMimeType() != null &&
-                                (part.getMimeType().equals("text/plain") || part.getMimeType().equals("text/html"))) {
-                                if (part.getBody() != null && part.getBody().getData() != null) {
-                                    String data = part.getBody().getData();
-                                    body.append(new String(Base64.getUrlDecoder().decode(data)));
-                                }
-                            }
-                        } catch (Exception e) {
-                            log.warn("Failed to process email part: {}", e.getMessage());
-                        }
+                        log.warn("Failed to decode body data: {}", e.getMessage());
                     }
                 }
             }
+            
+            if (part.getParts() != null && !part.getParts().isEmpty()) {
+                log.debug("Processing {} nested parts", part.getParts().size());
+                for (MessagePart subPart : part.getParts()) {
+                    extractTextFromPart(subPart, body);
+                }
+            }
         } catch (Exception e) {
-            log.error("Error extracting email body: {}", e.getMessage());
+            log.warn("Error processing message part: {}", e.getMessage());
+        }
+    }
+
+    private String stripHtmlTags(String html) {
+        if (html == null || html.isEmpty()) {
+            return html;
         }
         
-        return body.toString();
+        try {
+            String text = html.replaceAll("<[^>]+>", " ");
+            
+            text = text.replace("&nbsp;", " ")
+                    .replace("&amp;", "&")
+                    .replace("&lt;", "<")
+                    .replace("&gt;", ">")
+                    .replace("&quot;", "\"")
+                    .replace("&#39;", "'")
+                    .replace("&rsquo;", "'")
+                    .replace("&lsquo;", "'")
+                    .replace("&rdquo;", "\"")
+                    .replace("&ldquo;", "\"");
+            
+            text = text.replaceAll("\\s+", " ").trim();
+            
+            return text;
+        } catch (Exception e) {
+            log.warn("Failed to strip HTML tags: {}", e.getMessage());
+            return html;
+        }
     }
+
 }

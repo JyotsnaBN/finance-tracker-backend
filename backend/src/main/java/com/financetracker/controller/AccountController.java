@@ -13,6 +13,10 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
+import java.time.LocalDate;
+import org.springframework.format.annotation.DateTimeFormat;
+import com.financetracker.dto.BalanceHistoryDTO;
+
 @RestController
 @RequestMapping("/api/accounts")
 @RequiredArgsConstructor
@@ -32,6 +36,15 @@ public class AccountController {
     @GetMapping("/{id}")
     public ResponseEntity<AccountDTO> getAccountById(@PathVariable UUID id) {
         return ResponseEntity.ok(accountService.getAccountById(id));
+    }
+
+    @GetMapping("/{id}/balance-history")
+    public ResponseEntity<BalanceHistoryDTO> getBalanceHistory(
+            @PathVariable UUID id,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false, defaultValue = "DAY") String interval) {
+        return ResponseEntity.ok(accountService.getBalanceHistory(id, startDate, endDate, interval));
     }
     
     @PostMapping

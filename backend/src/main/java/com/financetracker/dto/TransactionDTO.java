@@ -46,10 +46,17 @@ public class TransactionDTO {
     
     @NotNull(message = "Transaction date is required")
     private Instant transactionDate;
+
+    private BigDecimal availableLimitAtTransaction;
     
     private Instant createdAt;
     private Instant updatedAt;
     
     private String accountName;
     private String categoryName;
+
+    private String deliveryMetadata;
+    private Integer deliveryCount;
+    private Integer totalDeliveredItems;
+
 }

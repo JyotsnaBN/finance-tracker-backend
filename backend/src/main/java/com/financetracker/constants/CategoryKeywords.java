@@ -7,13 +7,18 @@ import java.util.Map;
 public class CategoryKeywords {
     
     public static final Map<String, List<String>> CATEGORY_KEYWORDS = new HashMap<>() {{
-        put("Food & Dining", List.of(
+        put("Food", List.of(
             "swiggy", "zomato", "uber eats", "dominos", "pizza", "kfc", "mcdonald",
-            "restaurant", "cafe", "food", "grocery", "bigbasket", "blinkit", "dunzo",
-            "fresh", "meat", "bakery", "sweet", "juice", "coffee", "tea", "dmart",
+            "restaurant", "cafe", "food", "dmart", "hungerbox", "cut coffee",
+            "fresh", "meat", "bakery", "sweet", "juice", "coffee", "tea",
             "reliance fresh", "more", "spencers", "nature's basket", "foodhall"
         ));
-        
+
+        put("Groceries", List.of(
+            "grocery", "bigbasket", "blinkit", "dunzo", "grofers", "jiomart",
+            "instamart", "zepto", "milk", "vegetables", "fruits"
+        ));
+                
         put("Transport", List.of(
             "uber", "ola", "rapido", "metro", "bus", "taxi", "auto", "rickshaw",
             "petrol", "fuel", "diesel", "gas", "parking", "toll", "fastag",
@@ -28,7 +33,7 @@ public class CategoryKeywords {
             "tata cliq", "shoppers stop", "lifestyle", "westside", "pantaloons"
         ));
         
-        put("Bills & Utilities", List.of(
+        put("Bills", List.of(
             "electricity", "water", "gas", "lpg", "internet", "broadband",
             "mobile", "recharge", "dth", "airtel", "jio", "vodafone", "bsnl",
             "bill", "utility", "payment", "subscription", "tata sky", "dish tv",
@@ -39,7 +44,8 @@ public class CategoryKeywords {
             "netflix", "prime", "hotstar", "disney", "spotify", "youtube",
             "movie", "cinema", "pvr", "inox", "theatre", "game", "gaming",
             "music", "concert", "event", "ticket", "bookmyshow", "paytm insider",
-            "zee5", "sonyliv", "voot", "mx player", "jio cinema"
+            "zee5", "sonyliv", "voot", "mx player", "jio cinema",
+            "bigtree entertainment", "bigtree"
         ));
         
         put("Healthcare", List.of(
@@ -83,7 +89,7 @@ public class CategoryKeywords {
         
         put("Personal Care", List.of(
             "salon", "spa", "gym", "fitness", "yoga", "beauty", "haircut",
-            "massage", "wellness", "cult.fit", "healthifyme", "urban company",
+            "massage", "wellness", "cult fit", "healthifyme", "urban company",
             "lakme", "vlcc", "jawed habib"
         ));
     }};

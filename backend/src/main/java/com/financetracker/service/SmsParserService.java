@@ -17,16 +17,15 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.Set;
+import com.financetracker.util.AmountExtractor;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 @Slf4j
 public class SmsParserService {
 
-    private static final List<Pattern> AMOUNT_PATTERNS = List.of(
-            Pattern.compile("Rs\\.?\\s*(\\d+(?:,\\d+)*(?:\\.\\d{1,2})?)", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("INR\\s*(\\d+(?:,\\d+)*(?:\\.\\d{1,2})?)", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("₹\\s*(\\d+(?:,\\d+)*(?:\\.\\d{1,2})?)")
-    );
+    @Autowired
+    private AmountExtractor amountExtractor;
 
     private static final Pattern ACCOUNT_PATTERN =
         Pattern.compile(
@@ -95,6 +94,9 @@ public class SmsParserService {
             String accountHint = TransactionParsingUtil.normalizeAccountHint(rawAccountHint);
             String description = extractDescription(smsText);
 
+            BigDecimal availableLimit = extractAvailableLimit(smsText);
+            log.info("Extracted available limit: {}", availableLimit);
+
             boolean requiresManualReview =
                     amount == null || type == null || accountHint == null;
 
@@ -108,6 +110,7 @@ public class SmsParserService {
                     .rawText(smsText)
                     .source(TransactionSource.SMS)
                     .accountHint(accountHint)
+                    .availableLimit(availableLimit)
                     .requiresManualReview(requiresManualReview)
                     .parserNotes(notes)
                     .build();
@@ -141,6 +144,12 @@ public class SmsParserService {
         try {
             String lower = text.toLowerCase();
 
+            if (lower.contains("credit card") && 
+                (lower.contains("transaction") || lower.contains("processed"))) {
+                log.debug("Detected credit card transaction - treating as DEBIT");
+                return TransactionType.DEBIT;
+            }
+
             if (TransactionParsingUtil.containsAny(lower, "debited", "debit", "paid", "spent",
                     "withdrawn", "sent", "used", "purchase", "payment")) {
                 return TransactionType.DEBIT;
@@ -160,44 +169,33 @@ public class SmsParserService {
     }
 
     public BigDecimal extractAmount(String text) {
+        return amountExtractor.extractAmount(text);
+    }
+
+
+    public BigDecimal extractAvailableLimit(String text) {
         if (!TransactionParsingUtil.isValidString(text)) {
-            log.debug("Text is null or empty for amount extraction");
             return null;
         }
-
+        
         try {
-            for (Pattern pattern : AMOUNT_PATTERNS) {
-                Matcher matcher = pattern.matcher(text);
-                if (matcher.find()) {
-                    String amountStr = matcher.group(1).replace(",", "").trim();
-                    
-                    if (amountStr.isEmpty()) {
-                        continue;
-                    }
-                    
-                    BigDecimal amount = new BigDecimal(amountStr);
-                    
-                    if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-                        log.warn("Extracted non-positive amount: {}", amount);
-                        continue;
-                    }
-                    
-                    if (amount.compareTo(new BigDecimal("10000000")) > 0) {
-                        log.warn("Extracted suspiciously large amount: {}", amount);
-                    }
-                    
-                    log.debug("Extracted amount: {}", amount);
-                    return amount;
-                }
+            Pattern limitPattern = Pattern.compile(
+                "(?:Available\\s+Limit|Avl\\s+Lmt|Avl\\s+Limit)[:\\s]+(?:Rs\\.?\\s*)?(\\d+(?:,\\d+)*(?:\\.\\d{1,2})?)",
+                Pattern.CASE_INSENSITIVE
+            );
+            
+            Matcher matcher = limitPattern.matcher(text);
+            if (matcher.find()) {
+                String limitStr = matcher.group(1).replace(",", "").trim();
+                BigDecimal limit = new BigDecimal(limitStr);
+                log.debug("Extracted available limit: {}", limit);
+                return limit;
             }
             
-            log.debug("No amount pattern matched in text");
-            return null;
-        } catch (NumberFormatException e) {
-            log.warn("Failed to parse amount as number: {}", e.getMessage());
+            log.debug("No available limit found in text");
             return null;
         } catch (Exception e) {
-            log.error("Error extracting amount: {}", e.getMessage());
+            log.warn("Error extracting available limit: {}", e.getMessage());
             return null;
         }
     }

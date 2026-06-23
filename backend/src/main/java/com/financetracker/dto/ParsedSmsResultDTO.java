@@ -25,4 +25,5 @@ public class ParsedSmsResultDTO {
     private String accountHint;
     private boolean requiresManualReview;
     private String parserNotes;
+    private BigDecimal availableLimit;
 }

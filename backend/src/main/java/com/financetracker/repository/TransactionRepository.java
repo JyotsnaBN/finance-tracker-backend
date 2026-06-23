@@ -83,4 +83,21 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
         @Param("endDate") Instant endDate
     );
     
+    @Query("SELECT t FROM Transaction t WHERE t.account.user.id = :userId " +
+        "AND t.amount = :amount " +
+        "AND t.transactionDate BETWEEN :startDate AND :endDate " +
+        "AND t.transactionType = com.financetracker.model.TransactionType.DEBIT " +
+        "ORDER BY t.transactionDate")
+    List<Transaction> findByUserIdAndAmountAndDateRangeOrderByClosestToTarget(
+        @Param("userId") UUID userId,
+        @Param("amount") BigDecimal amount,
+        @Param("startDate") Instant startDate,
+        @Param("endDate") Instant endDate,
+        @Param("targetDate") Instant targetDate
+    );
+
+    @Query("SELECT CASE WHEN COUNT(t) > 0 THEN true ELSE false END " +
+        "FROM Transaction t WHERE t.deliveryMetadata LIKE %:trackingNumber%")
+    boolean existsByDeliveryTrackingNumber(@Param("trackingNumber") String trackingNumber);
+
 }

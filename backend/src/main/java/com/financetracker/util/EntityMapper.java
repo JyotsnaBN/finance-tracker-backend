@@ -9,6 +9,11 @@ import com.financetracker.model.Account;
 import com.financetracker.model.Category;
 import com.financetracker.model.Transaction;
 import com.financetracker.model.User;
+import com.financetracker.dto.DeliveryMetadataDTO;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import org.springframework.stereotype.Component;
 
@@ -16,16 +21,17 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Component
+@Slf4j
 public class EntityMapper {
+    @Autowired
+    private ObjectMapper objectMapper;
 
     public TransactionDTO toTransactionDTO(Transaction transaction) {
-        if (transaction == null) {
-            return null;
-        }
+        if (transaction == null) return null;
         
-        return TransactionDTO.builder()
+        TransactionDTO dto = TransactionDTO.builder()
             .id(transaction.getId())
-            .accountId(transaction.getAccount() != null ? transaction.getAccount().getId() : null)
+            .accountId(transaction.getAccount() != null ? transaction.getAccount().getUser().getId() : null)
             .categoryId(transaction.getCategory() != null ? transaction.getCategory().getId() : null)
             .amount(transaction.getAmount())
             .transactionType(transaction.getTransactionType())
@@ -33,11 +39,26 @@ public class EntityMapper {
             .description(transaction.getDescription())
             .rawText(transaction.getRawText())
             .transactionDate(transaction.getTransactionDate())
+            .availableLimitAtTransaction(transaction.getAvailableLimitAtTransaction())
             .createdAt(transaction.getCreatedAt())
             .updatedAt(transaction.getUpdatedAt())
             .accountName(transaction.getAccount() != null ? transaction.getAccount().getAccountName() : null)
             .categoryName(transaction.getCategory() != null ? transaction.getCategory().getName() : null)
+            .deliveryMetadata(transaction.getDeliveryMetadata())
             .build();
+        
+        if (transaction.getDeliveryMetadata() != null && !transaction.getDeliveryMetadata().isEmpty()) {
+            try {
+                DeliveryMetadataDTO metadata = objectMapper.readValue(
+                    transaction.getDeliveryMetadata(), DeliveryMetadataDTO.class);
+                dto.setDeliveryCount(metadata.getDeliveries().size());
+                dto.setTotalDeliveredItems(metadata.getTotalItemCount());
+            } catch (Exception e) {
+                log.warn("Failed to parse delivery metadata for transaction {}", transaction.getId());
+            }
+        }
+        
+        return dto;
     }
     
     public List<TransactionDTO> toTransactionDTOList(List<Transaction> transactions) {
@@ -124,4 +145,5 @@ public class EntityMapper {
             .map(this::toUserDTO)
             .collect(Collectors.toList());
     }
+
 }

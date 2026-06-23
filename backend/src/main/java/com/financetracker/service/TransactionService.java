@@ -8,6 +8,8 @@ import com.financetracker.repository.AccountRepository;
 import com.financetracker.repository.CategoryRepository;
 import com.financetracker.repository.TransactionRepository;
 import com.financetracker.util.EntityMapper;
+import com.financetracker.dto.BulkTransactionRequestDTO;
+import com.financetracker.dto.BulkTransactionResponseDTO;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.ArrayList;
 
 @Service
 @RequiredArgsConstructor
@@ -167,5 +170,38 @@ public class TransactionService {
             log.error("Failed to delete transaction {}: {}", id, e.getMessage(), e);
             throw new RuntimeException("Failed to delete transaction", e);
         }
+    }
+
+    @Transactional
+    public BulkTransactionResponseDTO createBulkTransactions(BulkTransactionRequestDTO request) {
+        log.info("Creating bulk transactions - count: {}", request.getTransactions().size());
+        
+        List<TransactionDTO> createdTransactions = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
+        int created = 0;
+        int failed = 0;
+        
+        for (TransactionDTO dto : request.getTransactions()) {
+            try {
+                TransactionDTO createdTransaction = createTransaction(dto);
+                createdTransactions.add(createdTransaction);
+                created++;
+            } catch (Exception e) {
+                failed++;
+                String errorMsg = String.format("Failed to create transaction for account %s, amount %s: %s",
+                    dto.getAccountId(), dto.getAmount(), e.getMessage());
+                errors.add(errorMsg);
+                log.error(errorMsg, e);
+            }
+        }
+        
+        log.info("Bulk transaction creation completed - Created: {}, Failed: {}", created, failed);
+        
+        return BulkTransactionResponseDTO.builder()
+            .created(created)
+            .failed(failed)
+            .transactions(createdTransactions)
+            .errors(errors)
+            .build();
     }
 }
