@@ -114,7 +114,7 @@ public class GoogleOAuthService {
                 JSON_FACTORY,
                 oauthConfig.getClientId(),
                 oauthConfig.getClientSecret(),
-                Collections.singletonList(oauthConfig.getScopes())
+                Arrays.asList(oauthConfig.getScopes().split("\\s+")) 
         )
         .setAccessType("offline")
         .setApprovalPrompt("force")
