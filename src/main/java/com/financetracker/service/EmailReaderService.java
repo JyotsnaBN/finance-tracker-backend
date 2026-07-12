@@ -368,16 +368,16 @@ public class EmailReaderService {
         }
         
         try {
+            String accessToken;
             if (config.getTokenExpiry() != null && config.getTokenExpiry().isBefore(Instant.now())) {
                 log.info("Access token expired, refreshing for user: {}", config.getUser().getId());
-                String newAccessToken = googleOAuthService.refreshAccessToken(config);
+                accessToken = googleOAuthService.refreshAccessToken(config);
+            } else {
+                if (config.getEncryptedAccessToken() == null || config.getEncryptedAccessToken().isEmpty()) {
+                    throw new IllegalStateException("Encrypted access token is missing for user: " + config.getUser().getId());
+                }
+                accessToken = encryptionUtil.decrypt(config.getEncryptedAccessToken());
             }
-            
-            if (config.getEncryptedAccessToken() == null || config.getEncryptedAccessToken().isEmpty()) {
-                throw new IllegalStateException("Encrypted access token is missing for user: " + config.getUser().getId());
-            }
-            
-            String accessToken = encryptionUtil.decrypt(config.getEncryptedAccessToken());
             
             if (accessToken == null || accessToken.isEmpty()) {
                 throw new IllegalStateException("Failed to decrypt access token for user: " + config.getUser().getId());
