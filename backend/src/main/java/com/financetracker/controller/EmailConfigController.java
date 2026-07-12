@@ -17,7 +17,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
-import jakarta.servlet.http.HttpSession;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -42,22 +41,23 @@ public class EmailConfigController {
 
     @Autowired
     private EmailReaderService emailReaderService;
-    
+
+    private final java.util.concurrent.ConcurrentHashMap<String, String> oauthStateStore
+        = new java.util.concurrent.ConcurrentHashMap<>();
+        
     @PostMapping("/connect")
-    public ResponseEntity<?> initiateConnection(HttpSession session) {
+    public ResponseEntity<?> initiateConnection() {                     // removed HttpSession
         UUID authenticatedUserId = getAuthenticatedUserId();
         log.info("Initiating email connection for user: {}", authenticatedUserId);
-        
+
         User user = userRepository.findById(authenticatedUserId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-        
-        // Generate secure random state token and store in session
+
         String stateToken = UUID.randomUUID().toString();
-        session.setAttribute("oauth_state_" + authenticatedUserId, stateToken);
-        session.setAttribute("oauth_user_id", authenticatedUserId.toString());
-        
+        oauthStateStore.put(stateToken, authenticatedUserId.toString());
+
         String authUrl = oauthService.generateAuthorizationUrl(stateToken);
-        
+
         return ResponseEntity.ok(OAuthUrlResponseDTO.builder()
                 .authorizationUrl(authUrl)
                 .message("Please visit the URL to authorize Gmail access")
@@ -67,40 +67,26 @@ public class EmailConfigController {
     @GetMapping("/oauth/callback")
     public ResponseEntity<String> handleOAuthCallback(
             @RequestParam String code,
-            @RequestParam String state,
-            HttpSession session) {
-        
+            @RequestParam String state) {                               // removed HttpSession
+
         log.info("Handling OAuth callback with state token");
-        
-        // Retrieve user ID from session
-        String userIdStr = (String) session.getAttribute("oauth_user_id");
+
+        String userIdStr = oauthStateStore.remove(state);
         if (userIdStr == null) {
-            log.error("OAuth callback: No user ID in session");
+            log.error("OAuth callback: No user ID found for state token");
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body("Invalid OAuth session. Please try again.");
         }
-        
+
         UUID userId = UUID.fromString(userIdStr);
-        
-        // Validate state token against session
-        String expectedState = (String) session.getAttribute("oauth_state_" + userId);
-        if (expectedState == null || !expectedState.equals(state)) {
-            log.error("OAuth callback: State token mismatch for user: {}", userId);
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Invalid state token. Possible CSRF attack detected.");
-        }
-        
-        // Clear session attributes after validation
-        session.removeAttribute("oauth_state_" + userId);
-        session.removeAttribute("oauth_user_id");
-        
+
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-        
+
         UserEmailConfig config = oauthService.exchangeCodeForTokens(code, user);
-        
+
         log.info("Successfully connected email for user: {}", userId);
-        
+
         return ResponseEntity.ok("Email account connected successfully! You can close this window.");
     }
     
