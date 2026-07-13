@@ -92,10 +92,14 @@ public class EmailReaderService {
     private void processUserDeliveryEmails(UserEmailConfig config) throws Exception {
         User user = config.getUser();
         log.info("=== Processing delivery emails for user: {} ({}) ===", user.getId(), config.getEmailAddress());
+
+        Instant runStartTime = Instant.now();
+
+        Instant since = config.getLastDeliverySync() != null
+            ? config.getLastDeliverySync().minus(5, ChronoUnit.MINUTES)
+            : runStartTime.minus(2, ChronoUnit.DAYS);
         
         Gmail service = getGmailServiceForUser(config);
-        
-        long twoDaysAgo = Instant.now().minus(2, ChronoUnit.DAYS).getEpochSecond();
         
         String query = String.format(
             "after:%d (" +
@@ -104,7 +108,7 @@ public class EmailReaderService {
             "subject:\"shipment delivered\" OR subject:\"has been delivered\" OR " +
             "subject:\"successfully delivered\"" +
             ")",
-            twoDaysAgo
+            since.getEpochSecond()
         );
         
         log.debug("Gmail query: {}", query);
@@ -119,6 +123,8 @@ public class EmailReaderService {
         
         if (messages == null || messages.isEmpty()) {
             log.warn("No delivery emails found for user: {}", user.getId());
+            config.setLastDeliverySync(runStartTime);
+            emailConfigRepository.save(config);
             return;
         }
         
@@ -201,6 +207,9 @@ public class EmailReaderService {
             }
         }
         
+        config.setLastDeliverySync(runStartTime);
+        emailConfigRepository.save(config);
+
         log.info("=== User {} complete: Success: {}, Skipped: {}, Failures: {} ===",
             user.getId(), successCount, skippedCount, failureCount);
     }
@@ -378,7 +387,6 @@ public class EmailReaderService {
                 }
                 accessToken = encryptionUtil.decrypt(config.getEncryptedAccessToken());
             }
-            
             if (accessToken == null || accessToken.isEmpty()) {
                 throw new IllegalStateException("Failed to decrypt access token for user: " + config.getUser().getId());
             }
@@ -465,10 +473,14 @@ public class EmailReaderService {
     private void processUserEmails(UserEmailConfig config) throws Exception {
         User user = config.getUser();
         log.info("Processing emails for user: {} ({})", user.getId(), config.getEmailAddress());
+
+        Instant runStartTime = Instant.now();
+
+        Instant since = config.getLastSync() != null
+            ? config.getLastSync().minus(5, ChronoUnit.MINUTES)
+            : runStartTime.minus(30, ChronoUnit.DAYS);
         
         Gmail service = getGmailServiceForUser(config);
-        
-        long tenDaysAgo = Instant.now().minus(30, ChronoUnit.DAYS).getEpochSecond();
         
         String query = String.format(
             "after:%d (" +
@@ -485,7 +497,7 @@ public class EmailReaderService {
             "subject:\"IMPS\" OR " +
             "subject:\"RTGS\"" +
             ")",
-            tenDaysAgo
+            since.getEpochSecond()
         );
         
         ListMessagesResponse response = service.users().messages()
@@ -498,7 +510,7 @@ public class EmailReaderService {
         
         if (messages == null || messages.isEmpty()) {
             log.info("No transaction emails found for user: {}", user.getId());
-            config.setLastSync(Instant.now());
+            config.setLastSync(runStartTime);
             emailConfigRepository.save(config);
             return;
         }
@@ -565,10 +577,10 @@ public class EmailReaderService {
             }
         }
         
-        config.setLastSync(Instant.now());
+        config.setLastSync(runStartTime);
         emailConfigRepository.save(config);
         
-        log.info("User {} ({}) - Success: {}, Duplicates: {}, Failures: {}", 
+        log.info("User {} ({}) - Success: {}, Duplicates: {}, Failures: {}",
             user.getId(), config.getEmailAddress(), successCount, duplicateCount, failureCount);
     }
     
@@ -609,7 +621,7 @@ public class EmailReaderService {
             
             String safeDescription = TransactionParsingUtil.truncateString(
                 parsed.getDescription() != null ? parsed.getDescription() : "Email transaction", 255);
-            String safeRawText = TransactionParsingUtil.truncateString(rawEmail, 255);
+            String safeRawText = rawEmail;
             
             Transaction transaction = Transaction.builder()
                 .account(account)
@@ -807,10 +819,7 @@ public class EmailReaderService {
             if (transaction.getDescription() != null && transaction.getDescription().length() > 255) {
                 transaction.setDescription(TransactionParsingUtil.truncateString(transaction.getDescription(), 255));
             }
-            if (transaction.getRawText() != null && transaction.getRawText().length() > 255) {
-                transaction.setRawText(TransactionParsingUtil.truncateString(transaction.getRawText(), 255));
-            }
-            
+
             Transaction savedTransaction = transactionRepository.save(transaction);
             log.info("Transaction saved successfully - ID: {}, Amount: {}, User: {}",
                 savedTransaction.getId(), savedTransaction.getAmount(), user.getId());

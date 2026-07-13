@@ -52,6 +52,9 @@ public class UserEmailConfig {
     
     @Column(name = "last_sync")
     private Instant lastSync;
+
+    @Column(name = "last_delivery_sync")
+    private Instant lastDeliverySync;
     
     @Column(name = "created_at", nullable = false, updatable = false)
     @CreationTimestamp

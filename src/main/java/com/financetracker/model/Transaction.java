@@ -55,7 +55,7 @@ public class Transaction {
     @Column(name = "description")
     private String description;
 
-    @Column(name = "raw_text")
+    @Column(name = "raw_text", columnDefinition = "TEXT")
     private String rawText;
 
     @Column(name = "transaction_date", nullable = false)
