@@ -1,6 +1,7 @@
 package com.financetracker.controller;
 
 import com.financetracker.dto.AccountDTO;
+import com.financetracker.security.SecurityUtils;
 import com.financetracker.service.AccountService;
 
 import jakarta.validation.Valid;
@@ -10,10 +11,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
-import java.time.LocalDate;
 import org.springframework.format.annotation.DateTimeFormat;
 import com.financetracker.dto.BalanceHistoryDTO;
 
@@ -22,14 +23,23 @@ import com.financetracker.dto.BalanceHistoryDTO;
 @RequiredArgsConstructor
 public class AccountController {
     private final AccountService accountService;
-    
+
     @GetMapping
     public ResponseEntity<List<AccountDTO>> getAllAccounts() {
-        return ResponseEntity.ok(accountService.getAllAccounts());
+        UUID userId = SecurityUtils.getAuthenticatedUserId();
+        return ResponseEntity.ok(accountService.getAccountsByUserId(userId));
     }
-    
+
+    /**
+     * Kept for backwards compatibility but enforces that the requested userId
+     * matches the authenticated user — prevents user A from fetching user B's accounts.
+     */
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<AccountDTO>> getAccountsByUserId(@PathVariable UUID userId) {
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
+        if (!authenticatedUserId.equals(userId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         return ResponseEntity.ok(accountService.getAccountsByUserId(userId));
     }
 
@@ -46,19 +56,21 @@ public class AccountController {
             @RequestParam(required = false, defaultValue = "DAY") String interval) {
         return ResponseEntity.ok(accountService.getBalanceHistory(id, startDate, endDate, interval));
     }
-    
+
     @PostMapping
     public ResponseEntity<AccountDTO> createAccount(@Valid @RequestBody AccountDTO dto) {
+        // Always use the authenticated user's ID — never trust the client-supplied userId
+        dto.setUserId(SecurityUtils.getAuthenticatedUserId());
         return new ResponseEntity<>(accountService.createAccount(dto), HttpStatus.CREATED);
     }
-    
+
     @PutMapping("/{id}")
     public ResponseEntity<AccountDTO> updateAccount(
             @PathVariable UUID id,
             @Valid @RequestBody AccountDTO dto) {
         return ResponseEntity.ok(accountService.updateAccount(id, dto));
     }
-    
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteAccount(@PathVariable UUID id) {
         accountService.deleteAccount(id);
