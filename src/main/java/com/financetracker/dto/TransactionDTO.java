@@ -23,10 +23,7 @@ import java.util.UUID;
 public class TransactionDTO {
     private Long id;
     
-    @NotNull(message = "Account ID is required")
     private UUID accountId;
-    
-    @NotNull(message = "Category ID is required")
     private Long categoryId;
     
     @NotNull(message = "Amount is required")

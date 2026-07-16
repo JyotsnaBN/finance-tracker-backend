@@ -7,7 +7,9 @@ import com.financetracker.model.Transaction;
 import com.financetracker.repository.AccountRepository;
 import com.financetracker.repository.CategoryRepository;
 import com.financetracker.repository.TransactionRepository;
+import com.financetracker.security.SecurityUtils;
 import com.financetracker.util.EntityMapper;
+import com.financetracker.util.TransactionParsingUtil;
 import com.financetracker.dto.BulkTransactionRequestDTO;
 import com.financetracker.dto.BulkTransactionResponseDTO;
 
@@ -18,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.ArrayList;
 
@@ -28,6 +31,7 @@ public class TransactionService {
     private final TransactionRepository transactionRepository;
     private final AccountRepository accountRepository;
     private final CategoryRepository categoryRepository;
+    private final CategoryService categoryService;
     private final EntityMapper entityMapper;
     
     @Transactional(readOnly = true)
@@ -55,12 +59,30 @@ public class TransactionService {
     @Transactional
     public TransactionDTO createTransaction(TransactionDTO dto) {
         log.info("Creating transaction for account: {}", dto.getAccountId());
-        
-        Account account = accountRepository.findById(dto.getAccountId())
-            .orElseThrow(() -> new RuntimeException("Account not found"));
-        
-        Category category = categoryRepository.findById(dto.getCategoryId())
-            .orElseThrow(() -> new RuntimeException("Category not found"));
+
+        Account account;
+        if (dto.getAccountId() != null) {
+            account = accountRepository.findById(dto.getAccountId())
+                .orElseThrow(() -> new RuntimeException("Account not found: " + dto.getAccountId()));
+        } else {
+            account = resolveAccountFromRawText(dto.getRawText());
+            if (account == null) {
+                throw new RuntimeException(
+                    "Could not resolve account: accountId is null and no matching account " +
+                    "found from rawText. Please register the account first.");
+            }
+            log.info("Account resolved from rawText: {}", account.getId());
+        }
+
+        Category category;
+        if (dto.getCategoryId() != null) {
+            category = categoryRepository.findById(dto.getCategoryId())
+                .orElseThrow(() -> new RuntimeException("Category not found: " + dto.getCategoryId()));
+        } else {
+            category = categoryService.categorizeTransaction(dto.getDescription());
+            log.info("Category auto-assigned: '{}' for description: '{}'",
+                category.getName(), dto.getDescription());
+        }
         
         if (isDuplicateTransaction(dto, account)) {
             log.warn("Duplicate transaction detected - Account: {}, Amount: {}, Type: {}, Date: {}",
@@ -89,7 +111,33 @@ public class TransactionService {
             throw new RuntimeException("Failed to create transaction", e);
         }
     }
-    
+
+    private Account resolveAccountFromRawText(String rawText) {
+        if (rawText == null || rawText.isBlank()) return null;
+        try {
+            UUID userId = SecurityUtils.getAuthenticatedUserId();
+            String last4 = TransactionParsingUtil.extractLast4Digits(rawText);
+            if (last4 != null) {
+                Optional<Account> found = accountRepository
+                    .findByUserIdAndAccountNumberEndingWith(userId, last4);
+                if (found.isPresent()) {
+                    log.debug("Resolved account by last4={} for user {}", last4, userId);
+                    return found.get();
+                }
+            }
+            // Fallback: if user has exactly one account, use it
+            List<Account> accounts = accountRepository.findByUserId(userId);
+            if (accounts.size() == 1) {
+                log.debug("Only one account for user {} — using it as fallback", userId);
+                return accounts.get(0);
+            }
+            return null;
+        } catch (Exception e) {
+            log.error("Error resolving account from rawText: {}", e.getMessage());
+            return null;
+        }
+    }
+
     private boolean isDuplicateTransaction(TransactionDTO dto, Account account) {
         try {
             if (dto.getRawText() != null && !dto.getRawText().trim().isEmpty()) {
