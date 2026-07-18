@@ -8,7 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 
@@ -32,12 +32,12 @@ public class AccountNumberEncryptionMigration {
 
     private final AccountRepository accountRepository;
     private final EncryptionUtil encryptionUtil;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${migration.account-number.enabled:false}")
     private boolean enabled;
 
     @EventListener(ApplicationReadyEvent.class)
-    @Transactional
     public void migrate() {
         if (!enabled) {
             log.debug("Account-number encryption migration is disabled — skipping");
@@ -45,27 +45,33 @@ public class AccountNumberEncryptionMigration {
         }
 
         log.info("Starting account-number encryption migration…");
-        List<Account> accounts = accountRepository.findAll();
-        int migrated = 0;
-        int skipped = 0;
+        // Use TransactionTemplate rather than @Transactional: the ApplicationReadyEvent
+        // fires after context refresh, at which point the startup EntityManager has already
+        // been closed. TransactionTemplate forces a brand-new EntityManager/Session to be
+        // opened here rather than reusing the stale one from the AOP proxy.
+        transactionTemplate.executeWithoutResult(status -> {
+            List<Account> accounts = accountRepository.findAll();
+            int migrated = 0;
+            int skipped = 0;
 
-        for (Account account : accounts) {
-            String stored = account.getAccountNumber();
-            if (stored == null || stored.isBlank()) {
-                skipped++;
-                continue;
+            for (Account account : accounts) {
+                String stored = account.getAccountNumber();
+                if (stored == null || stored.isBlank()) {
+                    skipped++;
+                    continue;
+                }
+                if (isAlreadyEncrypted(stored)) {
+                    skipped++;
+                    continue;
+                }
+                // Plain text — encrypt and save.
+                account.setAccountNumber(encryptionUtil.encrypt(stored));
+                accountRepository.save(account);
+                migrated++;
             }
-            if (isAlreadyEncrypted(stored)) {
-                skipped++;
-                continue;
-            }
-            // Plain text — encrypt and save.
-            account.setAccountNumber(encryptionUtil.encrypt(stored));
-            accountRepository.save(account);
-            migrated++;
-        }
 
-        log.info("Account-number encryption migration complete: {} migrated, {} skipped", migrated, skipped);
+            log.info("Account-number encryption migration complete: {} migrated, {} skipped", migrated, skipped);
+        });
     }
 
     /**
