@@ -1,6 +1,7 @@
 package com.financetracker.controller;
 
 import com.financetracker.dto.UserDTO;
+import com.financetracker.security.SecurityUtils;
 import com.financetracker.service.UserService;
 
 import jakarta.validation.Valid;
@@ -10,7 +11,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -27,6 +27,10 @@ public class UserController {
     
     @GetMapping("/{id}")
     public ResponseEntity<UserDTO> getUserById(@PathVariable UUID id) {
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
+        if (!authenticatedUserId.equals(id)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         return ResponseEntity.ok(userService.getUserById(id));
     }
     
@@ -37,11 +41,19 @@ public class UserController {
     
     @PutMapping("/{id}")
     public ResponseEntity<UserDTO> updateUser(@PathVariable UUID id, @Valid @RequestBody UserDTO dto) {
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
+        if (!authenticatedUserId.equals(id)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         return ResponseEntity.ok(userService.updateUser(id, dto));
     }
     
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteUser(@PathVariable UUID id) {
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
+        if (!authenticatedUserId.equals(id)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         userService.deleteUser(id);
         return ResponseEntity.noContent().build();
     }

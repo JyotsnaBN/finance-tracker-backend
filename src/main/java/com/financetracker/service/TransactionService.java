@@ -4,9 +4,11 @@ import com.financetracker.dto.TransactionDTO;
 import com.financetracker.model.Account;
 import com.financetracker.model.Category;
 import com.financetracker.model.Transaction;
+import com.financetracker.model.User;
 import com.financetracker.repository.AccountRepository;
 import com.financetracker.repository.CategoryRepository;
 import com.financetracker.repository.TransactionRepository;
+import com.financetracker.repository.UserRepository;
 import com.financetracker.security.SecurityUtils;
 import com.financetracker.util.EntityMapper;
 import com.financetracker.util.TransactionParsingUtil;
@@ -33,6 +35,8 @@ public class TransactionService {
     private final CategoryRepository categoryRepository;
     private final CategoryService categoryService;
     private final EntityMapper entityMapper;
+    private final UserRepository userRepository;
+    private final AccountResolutionService accountResolutionService;
     
     @Transactional(readOnly = true)
     public List<TransactionDTO> getAllTransactions() {
@@ -111,20 +115,24 @@ public class TransactionService {
             throw new RuntimeException("Failed to create transaction", e);
         }
     }
-
+    
+    /**
+     * Attempts to resolve an Account for the authenticated user by extracting
+     * the last 4 digits of an account number from the raw SMS/email text.
+     * Delegates to {@link AccountResolutionService} which uses in-memory last-4 matching
+     * against decrypted account numbers.
+     * Returns null if resolution fails.
+     */
     private Account resolveAccountFromRawText(String rawText) {
         if (rawText == null || rawText.isBlank()) return null;
         try {
             UUID userId = SecurityUtils.getAuthenticatedUserId();
-            String last4 = TransactionParsingUtil.extractLast4Digits(rawText);
-            if (last4 != null) {
-                Optional<Account> found = accountRepository
-                    .findByUserIdAndAccountNumberEndingWith(userId, last4);
-                if (found.isPresent()) {
-                    log.debug("Resolved account by last4={} for user {}", last4, userId);
-                    return found.get();
-                }
-            }
+            User user = userRepository.findById(userId).orElse(null);
+            if (user == null) return null;
+
+            Account resolved = accountResolutionService.resolveAccount(rawText, user);
+            if (resolved != null) return resolved;
+
             // Fallback: if user has exactly one account, use it
             List<Account> accounts = accountRepository.findByUserId(userId);
             if (accounts.size() == 1) {

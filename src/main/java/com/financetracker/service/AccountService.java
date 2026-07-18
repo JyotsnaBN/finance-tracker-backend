@@ -6,6 +6,7 @@ import com.financetracker.model.Account;
 import com.financetracker.model.User;
 import com.financetracker.repository.AccountRepository;
 import com.financetracker.repository.UserRepository;
+import com.financetracker.util.EncryptionUtil;
 import com.financetracker.util.EntityMapper;
 import com.financetracker.dto.BalanceHistoryDTO;
 import com.financetracker.dto.SpendingTrendsDTO;
@@ -37,6 +38,7 @@ public class AccountService {
     private final UserRepository userRepository;
     private final EntityMapper entityMapper;
     private final TransactionRepository transactionRepository;
+    private final EncryptionUtil encryptionUtil;
     
     @Transactional(readOnly = true)
     public List<AccountDTO> getAllAccounts() {
@@ -66,9 +68,12 @@ public class AccountService {
         
         User user = userRepository.findById(dto.getUserId())
             .orElseThrow(() -> new RuntimeException("User not found"));
-        
-        if (dto.getAccountNumber() != null &&
-            accountRepository.existsByAccountNumber(dto.getAccountNumber())) {
+
+        // Encrypt before the duplicate check so the stored value matches the ciphertext.
+        String encryptedAccountNumber = encryptionUtil.encryptIfPresent(dto.getAccountNumber());
+
+        if (encryptedAccountNumber != null &&
+            accountRepository.existsByAccountNumber(encryptedAccountNumber)) {
             throw new DuplicateResourceException("An account with this number already exists");
         }
         
@@ -76,7 +81,7 @@ public class AccountService {
             Account account = Account.builder()
                 .user(user)
                 .accountName(dto.getAccountName())
-                .accountNumber(dto.getAccountNumber())
+                .accountNumber(encryptedAccountNumber)
                 .bankName(dto.getBankName())
                 .accountType(dto.getAccountType())
                 .currentBalance(dto.getCurrentBalance() != null ? dto.getCurrentBalance() : BigDecimal.ZERO)

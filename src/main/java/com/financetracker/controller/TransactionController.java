@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/transactions")
@@ -29,7 +30,13 @@ public class TransactionController {
 
     @GetMapping("/{id}")
     public ResponseEntity<TransactionDTO> getTransactionById(@PathVariable Long id) {
-        return ResponseEntity.ok(transactionService.getTransactionById(id));
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
+        TransactionDTO transaction = transactionService.getTransactionById(id);
+        // accountId in TransactionDTO is mapped from account.user.id (see EntityMapper)
+        if (!authenticatedUserId.equals(transaction.getAccountId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        return ResponseEntity.ok(transaction);
     }
 
     @PostMapping
@@ -48,11 +55,21 @@ public class TransactionController {
     public ResponseEntity<TransactionDTO> updateTransaction(
             @PathVariable Long id,
             @Valid @RequestBody TransactionDTO dto) {
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
+        TransactionDTO existing = transactionService.getTransactionById(id);
+        if (!authenticatedUserId.equals(existing.getAccountId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         return ResponseEntity.ok(transactionService.updateTransaction(id, dto));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTransaction(@PathVariable Long id) {
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
+        TransactionDTO existing = transactionService.getTransactionById(id);
+        if (!authenticatedUserId.equals(existing.getAccountId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         transactionService.deleteTransaction(id);
         return ResponseEntity.noContent().build();
     }

@@ -77,6 +77,9 @@ public class EmailReaderService {
     
     @Autowired
     private EncryptionUtil encryptionUtil;
+
+    @Autowired
+    private AccountResolutionService accountResolutionService;
     
     @Autowired
     private GoogleOAuthService googleOAuthService;
@@ -648,72 +651,7 @@ public class EmailReaderService {
     }
     
     private Account resolveAccount(String accountHint, User user) {
-        if (!TransactionParsingUtil.isValidString(accountHint)) {
-            log.warn("Empty or null account hint for user: {}", user != null ? user.getId() : "null");
-            return null;
-        }
-        
-        if (user == null) {
-            log.error("User is null in resolveAccount");
-            return null;
-        }
-        
-        log.debug("Attempting to resolve account for user {} with hint: {}", user.getId(), accountHint);
-        
-        try {
-            String last4Digits = TransactionParsingUtil.extractLast4Digits(accountHint);
-            if (last4Digits != null) {
-                log.debug("Extracted last 4 digits: {}", last4Digits);
-                Optional<Account> account = accountRepository
-                    .findByUserIdAndAccountNumberEndingWith(user.getId(), last4Digits);
-                if (account.isPresent()) {
-                    log.info("Account resolved by number for user {}: last4={}, accountId={}",
-                        user.getId(), last4Digits, account.get().getId());
-                    return account.get();
-                } else {
-                    log.debug("No account found with last 4 digits: {}", last4Digits);
-                }
-            }
-            
-            String bankName = TransactionParsingUtil.extractBankName(accountHint);
-            AccountType accountType = TransactionParsingUtil.extractAccountType(accountHint);
-            
-            log.debug("Extracted bank: {}, type: {}", bankName, accountType);
-            
-            if (bankName != null && accountType != null) {
-                Optional<Account> account = accountRepository
-                    .findByUserIdAndBankNameAndAccountType(user.getId(), bankName, accountType);
-                if (account.isPresent()) {
-                    log.info("Account resolved by bank + type for user {}: bank={}, type={}, accountId={}",
-                        user.getId(), bankName, accountType, account.get().getId());
-                    return account.get();
-                } else {
-                    log.debug("No account found for bank {} and type {}", bankName, accountType);
-                }
-            }
-            
-            if (accountType != null) {
-                List<Account> accounts = accountRepository
-                    .findByUserIdAndAccountType(user.getId(), accountType);
-                log.debug("Found {} accounts of type {} for user {}", accounts.size(), accountType, user.getId());
-                if (accounts.size() == 1) {
-                    log.info("Account resolved by type only for user {}: type={}, accountId={}",
-                        user.getId(), accountType, accounts.get(0).getId());
-                    return accounts.get(0);
-                } else if (accounts.size() > 1) {
-                    log.warn("Multiple accounts found for type {} - cannot auto-resolve", accountType);
-                }
-            }
-            
-            log.warn("Could not resolve account for user {} with hint: {} (last4={}, bank={}, type={})",
-                user.getId(), accountHint, last4Digits, bankName, accountType);
-            return null;
-            
-        } catch (Exception e) {
-            log.error("Error resolving account for user {} with hint '{}': {}",
-                user.getId(), accountHint, e.getMessage());
-            return null;
-        }
+        return accountResolutionService.resolveAccount(accountHint, user);
     }
     
     

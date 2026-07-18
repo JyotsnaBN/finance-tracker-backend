@@ -1,6 +1,7 @@
 package com.financetracker;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.github.cdimascio.dotenv.Dotenv;
 import org.springframework.boot.SpringApplication;
@@ -29,6 +30,9 @@ public class BackendApplication {
     public ObjectMapper objectMapper() {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
+        // Serialize Instant/LocalDateTime as ISO-8601 strings, not epoch numbers.
+        // Matches spring.jackson.serialization.write-dates-as-timestamps=false
+        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         return mapper;
     }
 }

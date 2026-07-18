@@ -97,4 +97,22 @@ public class EncryptionUtil {
             throw new RuntimeException("Decryption failed", e);
         }
     }
+
+    /**
+     * Encrypts {@code value} if it is non-null and non-blank; returns {@code null} otherwise.
+     * Use this to avoid null checks across every call site.
+     */
+    public String encryptIfPresent(String value) {
+        if (value == null || value.isBlank()) return null;
+        return encrypt(value);
+    }
+
+    /**
+     * Decrypts {@code value} if it is non-null and non-blank; returns {@code null} otherwise.
+     * Use this to avoid null checks across every call site.
+     */
+    public String decryptIfPresent(String value) {
+        if (value == null || value.isBlank()) return null;
+        return decrypt(value);
+    }
 }

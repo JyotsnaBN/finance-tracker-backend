@@ -46,9 +46,12 @@ public class FailedTransactionController {
     @GetMapping("/{id}")
     public ResponseEntity<FailedTransactionDTO> getFailedTransaction(@PathVariable Long id) {
         log.debug("Fetching failed transaction with id: {}", id);
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
         FailedTransaction failed = failedTransactionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Failed transaction not found"));
-
+        if (!authenticatedUserId.equals(failed.getUser().getId())) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
+        }
         return ResponseEntity.ok(toDTO(failed));
     }
 
@@ -57,9 +60,13 @@ public class FailedTransactionController {
             @PathVariable Long id,
             @RequestParam Long transactionId) {
         log.info("Resolving failed transaction: {} with transaction: {}", id, transactionId);
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
 
         FailedTransaction failed = failedTransactionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Failed transaction not found"));
+        if (!authenticatedUserId.equals(failed.getUser().getId())) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
+        }
 
         failed.setResolved(true);
         failed.setResolvedTransactionId(transactionId);
@@ -72,9 +79,12 @@ public class FailedTransactionController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteFailedTransaction(@PathVariable Long id) {
         log.info("Deleting failed transaction: {}", id);
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
 
-        if (!failedTransactionRepository.existsById(id)) {
-            throw new RuntimeException("Failed transaction not found");
+        FailedTransaction failed = failedTransactionRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Failed transaction not found"));
+        if (!authenticatedUserId.equals(failed.getUser().getId())) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
         }
 
         failedTransactionRepository.deleteById(id);

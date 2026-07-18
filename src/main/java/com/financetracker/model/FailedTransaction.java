@@ -41,7 +41,7 @@ public class FailedTransaction {
     @Column(name = "email_config_id")
     private Long emailConfigId;
     
-    @Column(name = "email_account", nullable = false)
+    @Column(name = "email_account", nullable = true)
     private String emailAccount;
     
     @Column(name = "raw_email_content", columnDefinition = "TEXT")

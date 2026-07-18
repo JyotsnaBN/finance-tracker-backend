@@ -26,6 +26,9 @@ public class EntityMapper {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private EncryptionUtil encryptionUtil;
+
     public TransactionDTO toTransactionDTO(Transaction transaction) {
         if (transaction == null) return null;
         
@@ -74,12 +77,19 @@ public class EntityMapper {
         if (account == null) {
             return null;
         }
-        
+
+        String decryptedAccountNumber = null;
+        try {
+            decryptedAccountNumber = encryptionUtil.decryptIfPresent(account.getAccountNumber());
+        } catch (Exception e) {
+            log.warn("Could not decrypt account number for account {}: {}", account.getId(), e.getMessage());
+        }
+
         return AccountDTO.builder()
             .id(account.getId())
             .userId(account.getUser() != null ? account.getUser().getId() : null)
             .accountName(account.getAccountName())
-            .accountNumber(account.getAccountNumber())
+            .accountNumber(decryptedAccountNumber)
             .bankName(account.getBankName())
             .accountType(account.getAccountType())
             .currentBalance(account.getCurrentBalance())

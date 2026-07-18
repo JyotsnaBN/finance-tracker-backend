@@ -45,7 +45,12 @@ public class AccountController {
 
     @GetMapping("/{id}")
     public ResponseEntity<AccountDTO> getAccountById(@PathVariable UUID id) {
-        return ResponseEntity.ok(accountService.getAccountById(id));
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
+        AccountDTO account = accountService.getAccountById(id);
+        if (!authenticatedUserId.equals(account.getUserId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        return ResponseEntity.ok(account);
     }
 
     @GetMapping("/{id}/balance-history")
@@ -54,6 +59,14 @@ public class AccountController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false, defaultValue = "DAY") String interval) {
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
+        AccountDTO account = accountService.getAccountById(id);
+        if (!authenticatedUserId.equals(account.getUserId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        if (interval != null && !List.of("DAY", "WEEK", "MONTH").contains(interval.toUpperCase())) {
+            return ResponseEntity.badRequest().build();
+        }
         return ResponseEntity.ok(accountService.getBalanceHistory(id, startDate, endDate, interval));
     }
 
@@ -68,11 +81,21 @@ public class AccountController {
     public ResponseEntity<AccountDTO> updateAccount(
             @PathVariable UUID id,
             @Valid @RequestBody AccountDTO dto) {
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
+        AccountDTO account = accountService.getAccountById(id);
+        if (!authenticatedUserId.equals(account.getUserId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         return ResponseEntity.ok(accountService.updateAccount(id, dto));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteAccount(@PathVariable UUID id) {
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
+        AccountDTO account = accountService.getAccountById(id);
+        if (!authenticatedUserId.equals(account.getUserId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         accountService.deleteAccount(id);
         return ResponseEntity.noContent().build();
     }

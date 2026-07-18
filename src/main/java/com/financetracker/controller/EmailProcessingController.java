@@ -8,6 +8,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Map;
 
@@ -26,7 +28,10 @@ public class EmailProcessingController {
     public ResponseEntity<?> processAllEmails(
             @RequestHeader(value = "X-API-KEY", required = false) String apiKey) {
 
-        if (apiKey == null || !apiKey.equals(internalApiKey)) {
+        // Constant-time comparison — prevents timing-oracle attacks on the API key.
+        if (apiKey == null || !MessageDigest.isEqual(
+                apiKey.getBytes(StandardCharsets.UTF_8),
+                internalApiKey.getBytes(StandardCharsets.UTF_8))) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of(
                             "message", "Invalid API key",
@@ -46,12 +51,14 @@ public class EmailProcessingController {
                             "timestamp", Instant.now().toString()
                     ));
         } catch (Exception e) {
+            // Log full exception server-side; return a generic message to the caller
+            // so internal details (paths, schema names) are never leaked.
             log.error("Failed to start async email processing", e);
 
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of(
                             "message", "Failed to start email processing",
-                            "error", e.getMessage() != null ? e.getMessage() : "Unexpected error",
+                            "error", "Failed to start email processing. See server logs for details.",
                             "timestamp", Instant.now().toString()
                     ));
         }
