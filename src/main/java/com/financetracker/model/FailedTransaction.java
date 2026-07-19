@@ -69,9 +69,11 @@ public class FailedTransaction {
     @Column(name = "parsed_data_json", columnDefinition = "TEXT")
     private String parsedDataJson;
     
+    @Builder.Default
     @Column(name = "requires_manual_review", nullable = false)
     private Boolean requiresManualReview = true;
-    
+
+    @Builder.Default
     @Column(name = "resolved", nullable = false)
     private Boolean resolved = false;
     

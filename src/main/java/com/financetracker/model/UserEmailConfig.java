@@ -47,6 +47,7 @@ public class UserEmailConfig {
     @Column(name = "token_expiry")
     private Instant tokenExpiry;
     
+    @Builder.Default
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
     
