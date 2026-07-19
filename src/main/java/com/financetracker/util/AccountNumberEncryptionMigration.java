@@ -10,6 +10,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.Base64;
 import java.util.List;
 
 /**
@@ -64,9 +65,9 @@ public class AccountNumberEncryptionMigration {
                     skipped++;
                     continue;
                 }
-                // Plain text — encrypt and save.
-                account.setAccountNumber(encryptionUtil.encrypt(stored));
-                accountRepository.save(account);
+                // Plain text — encrypt and persist via a direct update query,
+                // bypassing the @Column(updatable = false) constraint on the field.
+                accountRepository.encryptAccountNumber(account.getId(), encryptionUtil.encrypt(stored));
                 migrated++;
             }
 
@@ -75,15 +76,22 @@ public class AccountNumberEncryptionMigration {
     }
 
     /**
-     * Returns {@code true} if {@code value} can be decrypted without throwing,
-     * meaning it was already stored as ciphertext.
+     * Returns {@code true} if {@code value} is structurally consistent with ciphertext
+     * produced by {@link EncryptionUtil}: valid Base64 and decoded length exceeds the
+     * 12-byte IV + 16-byte GCM tag minimum (28 bytes → at least 40 Base64 characters).
+     *
+     * <p>Deliberately avoids calling {@code decrypt()} — that logs ERROR on every
+     * plain-text row and wraps failures in RuntimeException, making the signal noisy.</p>
      */
     private boolean isAlreadyEncrypted(String value) {
-        try {
-            encryptionUtil.decrypt(value);
-            return true;
-        } catch (Exception e) {
+        if (value.length() < 40) {
             return false;
+        }
+        try {
+            byte[] decoded = Base64.getDecoder().decode(value);
+            return decoded.length > 28;
+        } catch (IllegalArgumentException e) {
+            return false; // not valid Base64 → plain text
         }
     }
 }

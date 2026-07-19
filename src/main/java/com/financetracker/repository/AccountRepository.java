@@ -3,6 +3,7 @@ package com.financetracker.repository;
 import com.financetracker.model.Account;
 import com.financetracker.model.AccountType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -23,6 +24,11 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
     Optional<Account> findByAccountNumberAndUserId(String accountNumber, UUID userId);
     
     boolean existsByAccountNumber(String accountNumber);
+
+    /** Used by the one-time encryption migration to bypass {@code updatable = false}. */
+    @Modifying
+    @Query("UPDATE Account a SET a.accountNumber = :encrypted WHERE a.id = :id")
+    void encryptAccountNumber(@Param("id") UUID id, @Param("encrypted") String encrypted);
     boolean existsByIdAndUserId(UUID id, UUID userId);
     
     @Query("SELECT COUNT(a) FROM Account a WHERE a.user.id = :userId")
