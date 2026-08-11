@@ -18,7 +18,7 @@ jobs:
         run: |
           BODY=$(jq -n --arg e "$LOGIN_EMAIL" --arg p "$LOGIN_PASSWORD" \
             '{"email":$e,"password":$p}')
-          RESPONSE=$(curl --show-error --silent \
+          RESPONSE=$(curl --show-error --verbose \
             -X POST "${{ secrets.BACKEND_BASE_URL }}/api/auth/login" \
             -H "Content-Type: application/json" \
             -d "$BODY")
