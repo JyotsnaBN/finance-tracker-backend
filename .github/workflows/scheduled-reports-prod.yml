@@ -1,0 +1,65 @@
+name: Send Scheduled Finance Reports (Prod)
+
+on:
+  schedule:
+    - cron: "0 6 1,16 * *"   # 06:00 UTC on the 1st and 16th of every month
+  workflow_dispatch:
+
+jobs:
+  send-reports-prod:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Login and obtain JWT
+        id: auth
+        run: |
+          RESPONSE=$(curl --fail --show-error --silent \
+            -X POST "${{ secrets.PROD_BACKEND_BASE_URL }}/api/auth/login" \
+            -H "Content-Type: application/json" \
+            -d '{"email":"${{ secrets.MAIL_USERNAME }}","password":"${{ secrets.MAIL_PASSWORD }}"}')
+          TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Compute date range
+        id: dates
+        run: |
+          DAY=$(date -u +%-d)
+          YEAR=$(date -u +%Y)
+          MONTH=$(date -u +%m)
+
+          if [ "$DAY" -le 15 ]; then
+            # 1st of month: full previous month
+            START=$(date -u -d "${YEAR}-${MONTH}-01 -1 month" +%Y-%m-01)
+            END=$(date -u -d "${YEAR}-${MONTH}-01 -1 day" +%Y-%m-%d)
+          else
+            # 16th of month: 1st to 15th of current month
+            START="${YEAR}-${MONTH}-01"
+            END="${YEAR}-${MONTH}-15"
+          fi
+
+          echo "start=$START" >> "$GITHUB_OUTPUT"
+          echo "end=$END"     >> "$GITHUB_OUTPUT"
+
+      - name: Send Summary report
+        run: |
+          curl --fail --show-error --silent \
+            -X GET "${{ secrets.PROD_BACKEND_BASE_URL }}/api/reports/summary?startDate=${{ steps.dates.outputs.start }}&endDate=${{ steps.dates.outputs.end }}&sendEmail=true" \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}"
+
+      - name: Send Income/Expense report
+        run: |
+          curl --fail --show-error --silent \
+            -X GET "${{ secrets.PROD_BACKEND_BASE_URL }}/api/reports/income-expense?startDate=${{ steps.dates.outputs.start }}&endDate=${{ steps.dates.outputs.end }}&sendEmail=true" \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}"
+
+      - name: Send Category Breakdown report
+        run: |
+          curl --fail --show-error --silent \
+            -X GET "${{ secrets.PROD_BACKEND_BASE_URL }}/api/reports/category-breakdown?startDate=${{ steps.dates.outputs.start }}&endDate=${{ steps.dates.outputs.end }}&sendEmail=true" \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}"
+
+      - name: Send Account Balances report
+        run: |
+          curl --fail --show-error --silent \
+            -X GET "${{ secrets.PROD_BACKEND_BASE_URL }}/api/reports/account-balances?sendEmail=true" \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}"
