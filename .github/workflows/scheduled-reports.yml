@@ -12,12 +12,21 @@ jobs:
     steps:
       - name: Login and obtain JWT
         id: auth
+        env:
+          LOGIN_EMAIL: ${{ secrets.MAIL_USERNAME }}
+          LOGIN_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
         run: |
-          RESPONSE=$(curl --fail --show-error --silent \
+          BODY=$(jq -n --arg e "$LOGIN_EMAIL" --arg p "$LOGIN_PASSWORD" \
+            '{"email":$e,"password":$p}')
+          RESPONSE=$(curl --show-error --silent \
             -X POST "${{ secrets.BACKEND_BASE_URL }}/api/auth/login" \
             -H "Content-Type: application/json" \
-            -d '{"email":"${{ secrets.MAIL_USERNAME }}","password":"${{ secrets.MAIL_PASSWORD }}"}')
+            -d "$BODY")
           TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+          if [ -z "$TOKEN" ]; then
+            echo "Login failed. Response: $RESPONSE"
+            exit 1
+          fi
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
 
       - name: Compute date range
