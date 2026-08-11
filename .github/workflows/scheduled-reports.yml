@@ -51,24 +51,36 @@ jobs:
 
       - name: Send Summary report
         run: |
-          curl --fail --show-error --silent \
+          RESPONSE=$(curl --show-error --silent -w "\nHTTP_STATUS:%{http_code}" \
             -X GET "${{ secrets.BACKEND_BASE_URL }}/api/reports/summary?startDate=${{ steps.dates.outputs.start }}&endDate=${{ steps.dates.outputs.end }}&sendEmail=true" \
-            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}"
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}")
+          echo "$RESPONSE"
+          STATUS=$(echo "$RESPONSE" | grep -o 'HTTP_STATUS:[0-9]*' | cut -d: -f2)
+          [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ] || (echo "Failed with status $STATUS" && exit 1)
 
       - name: Send Income/Expense report
         run: |
-          curl --fail --show-error --silent \
+          RESPONSE=$(curl --show-error --silent -w "\nHTTP_STATUS:%{http_code}" \
             -X GET "${{ secrets.BACKEND_BASE_URL }}/api/reports/income-expense?startDate=${{ steps.dates.outputs.start }}&endDate=${{ steps.dates.outputs.end }}&sendEmail=true" \
-            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}"
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}")
+          echo "$RESPONSE"
+          STATUS=$(echo "$RESPONSE" | grep -o 'HTTP_STATUS:[0-9]*' | cut -d: -f2)
+          [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ] || (echo "Failed with status $STATUS" && exit 1)
 
       - name: Send Category Breakdown report
         run: |
-          curl --fail --show-error --silent \
+          RESPONSE=$(curl --show-error --silent -w "\nHTTP_STATUS:%{http_code}" \
             -X GET "${{ secrets.BACKEND_BASE_URL }}/api/reports/category-breakdown?startDate=${{ steps.dates.outputs.start }}&endDate=${{ steps.dates.outputs.end }}&sendEmail=true" \
-            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}"
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}")
+          echo "$RESPONSE"
+          STATUS=$(echo "$RESPONSE" | grep -o 'HTTP_STATUS:[0-9]*' | cut -d: -f2)
+          [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ] || (echo "Failed with status $STATUS" && exit 1)
 
       - name: Send Account Balances report
         run: |
-          curl --fail --show-error --silent \
+          RESPONSE=$(curl --show-error --silent -w "\nHTTP_STATUS:%{http_code}" \
             -X GET "${{ secrets.BACKEND_BASE_URL }}/api/reports/account-balances?sendEmail=true" \
-            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}"
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}")
+          echo "$RESPONSE"
+          STATUS=$(echo "$RESPONSE" | grep -o 'HTTP_STATUS:[0-9]*' | cut -d: -f2)
+          [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ] || (echo "Failed with status $STATUS" && exit 1)
