@@ -32,8 +32,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String jwt = getJwtFromRequest(request);
 
-
         if (StringUtils.hasText(jwt)) {
+            // A token was presented — validate it
             if (tokenProvider.validateToken(jwt)) {
                 UUID userId = tokenProvider.getUserIdFromToken(jwt);
                 UsernamePasswordAuthenticationToken authentication =
@@ -41,12 +41,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } else {
+                // Token is present but invalid/expired — reject immediately with 401
+                // so the Android client knows to attempt a refresh
                 log.warn("Invalid or expired JWT for request: {}", request.getRequestURI());
                 response.sendError(401, "Invalid or expired token");
                 return;
             }
         }
-
 
         filterChain.doFilter(request, response);
     }

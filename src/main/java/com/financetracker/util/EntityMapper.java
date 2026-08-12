@@ -34,7 +34,9 @@ public class EntityMapper {
         
         TransactionDTO dto = TransactionDTO.builder()
             .id(transaction.getId())
-            .accountId(transaction.getAccount() != null ? transaction.getAccount().getUser().getId() : null)
+            .accountId(transaction.getAccount() != null ? transaction.getAccount().getId() : null)
+            .userId(transaction.getAccount() != null && transaction.getAccount().getUser() != null
+                    ? transaction.getAccount().getUser().getId() : null)
             .categoryId(transaction.getCategory() != null ? transaction.getCategory().getId() : null)
             .amount(transaction.getAmount())
             .transactionType(transaction.getTransactionType())

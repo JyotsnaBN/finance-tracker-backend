@@ -34,9 +34,19 @@ public class UserController {
         return ResponseEntity.ok(userService.getUserById(id));
     }
     
+    /**
+     * Look up the authenticated user's own profile by email.
+     * The email in the path must match the authenticated user's email to prevent
+     * one account enumerating another account's existence.
+     */
     @GetMapping("/email/{email}")
     public ResponseEntity<UserDTO> getUserByEmail(@PathVariable String email) {
-        return ResponseEntity.ok(userService.getUserByEmail(email));
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
+        UserDTO user = userService.getUserByEmail(email);
+        if (!authenticatedUserId.equals(user.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        return ResponseEntity.ok(user);
     }
     
     @PutMapping("/{id}")

@@ -38,10 +38,12 @@ public class SmsController {
             TransactionDTO result = smsIngestionService.ingest(userId, request.getSmsBody(), request.getSender());
             return ResponseEntity.status(HttpStatus.CREATED).body(result);
         } catch (Exception e) {
+            // Log the full detail server-side; return a generic message to the client
+            // so no internal implementation detail is disclosed.
             log.warn("SMS ingest failed for user {}: {}", userId, e.getMessage());
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
                     .body(Map.of(
-                            "error", e.getMessage() != null ? e.getMessage() : "SMS could not be processed",
+                            "error", "The SMS could not be processed. Please verify the message format.",
                             "timestamp", Instant.now().toString()
                     ));
         }

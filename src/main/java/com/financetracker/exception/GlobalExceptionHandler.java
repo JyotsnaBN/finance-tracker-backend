@@ -54,129 +54,117 @@ class UnauthorizedAccessException extends RuntimeException {
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-    
+
     private String generateErrorId() {
         return UUID.randomUUID().toString().substring(0, 8);
     }
-    
+
     private ErrorResponse createErrorResponse(HttpStatus status, String message, String path) {
         String errorId = generateErrorId();
         return new ErrorResponse(
-            status.value(),
-            message,
-            LocalDateTime.now(),
-            path,
-            errorId
+                status.value(),
+                message,
+                LocalDateTime.now(),
+                path,
+                errorId
         );
     }
-    
+
+    /** Generate an error ID, log the full exception, and return the ID so the user
+     *  can quote it when contacting support — but never expose internal details. */
+    private String logAndGetId(String level, String context, HttpServletRequest request, Throwable ex) {
+        String errorId = generateErrorId();
+        if ("error".equals(level)) {
+            logger.error("[{}] {} at {}: {}", errorId, context, request.getRequestURI(), ex.getMessage(), ex);
+        } else {
+            logger.warn("[{}] {} at {}: {}", errorId, context, request.getRequestURI(), ex.getMessage());
+        }
+        return errorId;
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleResourceNotFound(
             ResourceNotFoundException ex, HttpServletRequest request) {
-        String errorId = generateErrorId();
-        logger.warn("[{}] Resource not found at {}: {}", errorId, request.getRequestURI(), ex.getMessage());
-        
-        ErrorResponse error = createErrorResponse(
-            HttpStatus.NOT_FOUND,
-            ex.getMessage(),
-            request.getRequestURI()
-        );
+        String errorId = logAndGetId("warn", "Resource not found", request, ex);
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.NOT_FOUND.value(), ex.getMessage(),
+                LocalDateTime.now(), request.getRequestURI(), errorId);
         return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);
     }
-    
+
     @ExceptionHandler(UnauthorizedAccessException.class)
     public ResponseEntity<ErrorResponse> handleUnauthorizedAccess(
             UnauthorizedAccessException ex, HttpServletRequest request) {
-        String errorId = generateErrorId();
-        logger.warn("[{}] Unauthorized access attempt at {}: {}", errorId, request.getRequestURI(), ex.getMessage());
-        
-        ErrorResponse error = createErrorResponse(
-            HttpStatus.FORBIDDEN,
-            "You do not have permission to access this resource",
-            request.getRequestURI()
-        );
+        String errorId = logAndGetId("warn", "Unauthorized access attempt", request, ex);
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.FORBIDDEN.value(),
+                "You do not have permission to access this resource",
+                LocalDateTime.now(), request.getRequestURI(), errorId);
         return new ResponseEntity<>(error, HttpStatus.FORBIDDEN);
     }
-    
+
     @ExceptionHandler(InsufficientFundsException.class)
     public ResponseEntity<ErrorResponse> handleInsufficientFunds(
             InsufficientFundsException ex, HttpServletRequest request) {
-        String errorId = generateErrorId();
-        logger.warn("[{}] Insufficient funds at {}: {}", errorId, request.getRequestURI(), ex.getMessage());
-        
-        ErrorResponse error = createErrorResponse(
-            HttpStatus.BAD_REQUEST,
-            ex.getMessage(),
-            request.getRequestURI()
-        );
+        String errorId = logAndGetId("warn", "Insufficient funds", request, ex);
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.BAD_REQUEST.value(), ex.getMessage(),
+                LocalDateTime.now(), request.getRequestURI(), errorId);
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
     }
-    
+
     @ExceptionHandler(DuplicateResourceException.class)
     public ResponseEntity<ErrorResponse> handleDuplicateResource(
             DuplicateResourceException ex, HttpServletRequest request) {
-        String errorId = generateErrorId();
-        logger.warn("[{}] Duplicate resource at {}: {}", errorId, request.getRequestURI(), ex.getMessage());
-        
-        ErrorResponse error = createErrorResponse(
-            HttpStatus.CONFLICT,
-            ex.getMessage(),
-            request.getRequestURI()
-        );
+        String errorId = logAndGetId("warn", "Duplicate resource", request, ex);
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.CONFLICT.value(), ex.getMessage(),
+                LocalDateTime.now(), request.getRequestURI(), errorId);
         return new ResponseEntity<>(error, HttpStatus.CONFLICT);
     }
-    
+
     @ExceptionHandler(EmailConfigurationException.class)
     public ResponseEntity<ErrorResponse> handleEmailConfiguration(
             EmailConfigurationException ex, HttpServletRequest request) {
-        String errorId = generateErrorId();
-        logger.error("[{}] Email configuration error at {}: {}", errorId, request.getRequestURI(), ex.getMessage(), ex);
-        
-        ErrorResponse error = createErrorResponse(
-            HttpStatus.BAD_REQUEST,
-            "Failed to configure email connection. Please try again or contact support if the problem persists.",
-            request.getRequestURI()
-        );
+        String errorId = logAndGetId("error", "Email configuration error", request, ex);
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                "Failed to configure email connection. Please try again or contact support if the problem persists.",
+                LocalDateTime.now(), request.getRequestURI(), errorId);
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
     }
-    
+
     @ExceptionHandler(OAuthException.class)
     public ResponseEntity<ErrorResponse> handleOAuth(
             OAuthException ex, HttpServletRequest request) {
-        String errorId = generateErrorId();
-        logger.error("[{}] OAuth error at {}: {}", errorId, request.getRequestURI(), ex.getMessage(), ex);
-        
-        ErrorResponse error = createErrorResponse(
-            HttpStatus.UNAUTHORIZED,
-            "Authentication failed. Please try connecting your email account again.",
-            request.getRequestURI()
-        );
+        String errorId = logAndGetId("error", "OAuth error", request, ex);
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.UNAUTHORIZED.value(),
+                "Authentication failed. Please try connecting your email account again.",
+                LocalDateTime.now(), request.getRequestURI(), errorId);
         return new ResponseEntity<>(error, HttpStatus.UNAUTHORIZED);
     }
-    
+
     @ExceptionHandler(EmailProcessingException.class)
     public ResponseEntity<ErrorResponse> handleEmailProcessing(
             EmailProcessingException ex, HttpServletRequest request) {
-        String errorId = generateErrorId();
-        logger.error("[{}] Email processing error at {}: {}", errorId, request.getRequestURI(), ex.getMessage(), ex);
-        
-        ErrorResponse error = createErrorResponse(
-            HttpStatus.INTERNAL_SERVER_ERROR,
-            "Failed to process email transactions. The issue has been logged and will be investigated.",
-            request.getRequestURI()
-        );
+        String errorId = logAndGetId("error", "Email processing error", request, ex);
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "Failed to process email transactions. The issue has been logged and will be investigated.",
+                LocalDateTime.now(), request.getRequestURI(), errorId);
         return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
     }
-    
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, String>> handleValidationExceptions(
             MethodArgumentNotValidException ex, HttpServletRequest request) {
         String errorId = generateErrorId();
         logger.warn("[{}] Validation failed at {}: {} validation errors",
-            errorId, request.getRequestURI(), ex.getBindingResult().getErrorCount());
-        
+                errorId, request.getRequestURI(), ex.getBindingResult().getErrorCount());
+
         Map<String, String> errors = new HashMap<>();
         ex.getBindingResult().getAllErrors().forEach((error) -> {
             String fieldName = ((FieldError) error).getField();
@@ -186,26 +174,28 @@ public class GlobalExceptionHandler {
         errors.put("errorId", errorId);
         return new ResponseEntity<>(errors, HttpStatus.BAD_REQUEST);
     }
-    
+
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ErrorResponse> handleTypeMismatch(
             MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
         String errorId = generateErrorId();
-        logger.warn("[{}] Type mismatch at {}: parameter '{}' with value '{}' could not be converted to type '{}'",
-            errorId, request.getRequestURI(), ex.getName(), ex.getValue(),
-            ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown");
-        
-        String message = String.format("Invalid value '%s' for parameter '%s'", ex.getValue(), ex.getName());
-        ErrorResponse error = createErrorResponse(HttpStatus.BAD_REQUEST, message, request.getRequestURI());
+        logger.warn("[{}] Type mismatch at {}: parameter '{}'",
+                errorId, request.getRequestURI(), ex.getName());
+
+        // Redact the actual value from the user-facing message to avoid echoing back
+        // potentially sensitive input.
+        String message = String.format("Invalid value for parameter '%s'", ex.getName());
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.BAD_REQUEST.value(), message,
+                LocalDateTime.now(), request.getRequestURI(), errorId);
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
     }
-    
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(
             DataIntegrityViolationException ex, HttpServletRequest request) {
-        String errorId = generateErrorId();
-        logger.error("[{}] Data integrity violation at {}: {}", errorId, request.getRequestURI(), ex.getMessage(), ex);
-        
+        String errorId = logAndGetId("error", "Data integrity violation", request, ex);
+
         String userMessage = "Unable to complete the operation due to data constraints";
         if (ex.getMessage() != null) {
             String msg = ex.getMessage().toLowerCase();
@@ -215,66 +205,56 @@ public class GlobalExceptionHandler {
                 userMessage = "Cannot complete operation because this record is referenced by other data";
             }
         }
-        
-        ErrorResponse error = createErrorResponse(HttpStatus.CONFLICT, userMessage, request.getRequestURI());
+        // Use 409 Conflict — do NOT include raw DB error text
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.CONFLICT.value(), userMessage,
+                LocalDateTime.now(), request.getRequestURI(), errorId);
         return new ResponseEntity<>(error, HttpStatus.CONFLICT);
     }
-    
+
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorResponse> handleAuthenticationException(
             AuthenticationException ex, HttpServletRequest request) {
-        String errorId = generateErrorId();
-        logger.warn("[{}] Authentication failed at {}: {}", errorId, request.getRequestURI(), ex.getMessage());
-        
-        ErrorResponse error = createErrorResponse(
-            HttpStatus.UNAUTHORIZED,
-            "Authentication failed. Please check your credentials and try again.",
-            request.getRequestURI()
-        );
+        String errorId = logAndGetId("warn", "Authentication failed", request, ex);
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.UNAUTHORIZED.value(),
+                "Authentication failed. Please check your credentials and try again.",
+                LocalDateTime.now(), request.getRequestURI(), errorId);
         return new ResponseEntity<>(error, HttpStatus.UNAUTHORIZED);
     }
-    
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(
             IllegalArgumentException ex, HttpServletRequest request) {
-        String errorId = generateErrorId();
-        logger.warn("[{}] Invalid argument at {}: {}", errorId, request.getRequestURI(), ex.getMessage());
-        
-        ErrorResponse error = createErrorResponse(
-            HttpStatus.BAD_REQUEST,
-            ex.getMessage() != null ? ex.getMessage() : "Invalid request parameters",
-            request.getRequestURI()
-        );
+        String errorId = logAndGetId("warn", "Invalid argument", request, ex);
+        // Do NOT echo back ex.getMessage() — it may contain internal paths/values.
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                "Invalid request parameters. Please check your input and try again.",
+                LocalDateTime.now(), request.getRequestURI(), errorId);
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
     }
-    
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ErrorResponse> handleRuntimeException(
             RuntimeException ex, HttpServletRequest request) {
-        String errorId = generateErrorId();
-        logger.error("[{}] Runtime exception at {}: {}", errorId, request.getRequestURI(), ex.getMessage(), ex);
-        
-        String userMessage = "An error occurred while processing your request";
-        if (ex.getMessage() != null && !ex.getMessage().contains("Exception") &&
-            !ex.getMessage().contains("Error") && ex.getMessage().length() < 200) {
-            userMessage = ex.getMessage();
-        }
-        
-        ErrorResponse error = createErrorResponse(HttpStatus.BAD_REQUEST, userMessage, request.getRequestURI());
-        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+        String errorId = logAndGetId("error", "Runtime exception", request, ex);
+        // Always return a generic message — never forward internal exception text.
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "An unexpected error occurred. Please try again later or contact support with error ID: " + errorId,
+                LocalDateTime.now(), request.getRequestURI(), errorId);
+        return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
     }
-    
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(
             Exception ex, HttpServletRequest request) {
-        String errorId = generateErrorId();
-        logger.error("[{}] Unexpected error at {}: {}", errorId, request.getRequestURI(), ex.getMessage(), ex);
-        
-        ErrorResponse error = createErrorResponse(
-            HttpStatus.INTERNAL_SERVER_ERROR,
-            "An unexpected error occurred. Our team has been notified. Please try again later or contact support with error ID: " + errorId,
-            request.getRequestURI()
-        );
+        String errorId = logAndGetId("error", "Unexpected error", request, ex);
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "An unexpected error occurred. Our team has been notified. Please try again later or contact support with error ID: " + errorId,
+                LocalDateTime.now(), request.getRequestURI(), errorId);
         return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 }

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title th:text="'Finance Report — ' + ${report.reportType}">Finance Report</title>
+  <style>
+    body { margin:0; padding:0; background:#f3f4f6; font-family:-apple-system,'Segoe UI',Arial,sans-serif; color:#1f2328; }
+    .wrapper { max-width:660px; margin:32px auto; background:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #e5e7eb; }
+    .header  { background:#1e3a5f; color:#ffffff; padding:28px 32px 22px; }
+    .header h1 { margin:0 0 4px; font-size:22px; font-weight:700; }
+    .header p  { margin:0; font-size:13px; opacity:.75; }
+    .section { padding:24px 32px 0; }
+    .section:last-of-type { padding-bottom:28px; }
+    h2 { font-size:15px; font-weight:600; color:#1e3a5f; border-bottom:2px solid #e5e7eb; padding-bottom:8px; margin:0 0 16px; }
+    .kpi-row { display:flex; gap:12px; }
+    .kpi { flex:1; background:#f7f8fa; border:1px solid #e5e7eb; border-radius:6px; padding:14px 16px; }
+    .kpi .label { font-size:11px; color:#57606a; text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px; }
+    .kpi .value { font-size:20px; font-weight:700; }
+    .positive { color:#16a34a; }
+    .negative { color:#dc2626; }
+    .insight-box { background:#eff6ff; border-left:4px solid #3b82f6; border-radius:4px; padding:12px 16px; margin-bottom:12px; font-size:13px; line-height:1.6; }
+    .insight-title { font-weight:600; color:#1e40af; margin-bottom:4px; font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
+    table.dt { width:100%; border-collapse:collapse; font-size:13px; }
+    table.dt th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#57606a; padding:6px 8px; border-bottom:2px solid #e5e7eb; }
+    table.dt td { padding:8px; border-bottom:1px solid #f0f1f3; }
+    table.dt tr:last-child td { border-bottom:none; }
+    .bar-bg   { background:#e5e7eb; border-radius:4px; height:8px; overflow:hidden; margin-bottom:2px; }
+    .bar-fill { height:8px; border-radius:4px; background:#3b82d4; }
+    .bar-alt  { height:8px; border-radius:4px; background:#7c5cd8; }
+    .badge { display:inline-block; font-size:11px; font-weight:600; border-radius:4px; padding:2px 8px; }
+    .badge-income  { background:#dcfce7; color:#16a34a; }
+    .badge-expense { background:#fee2e2; color:#dc2626; }
+    .footer { text-align:center; font-size:11px; color:#57606a; padding:16px 32px; border-top:1px solid #e5e7eb; }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- HEADER -->
+  <div class="header">
+    <h1>Finance Report</h1>
+    <p>
+      <span th:text="${report.reportType}">TYPE</span>
+      <th:block th:if="${report.startDate != null}">
+        &nbsp;&middot;&nbsp;
+        <span th:text="${report.startDate}">start</span> &rarr; <span th:text="${report.endDate}">end</span>
+      </th:block>
+    </p>
+  </div>
+
+  <!-- KPI CARDS -->
+  <div class="section" th:if="${fmtIncome != null}">
+    <h2>Overview</h2>
+    <div class="kpi-row">
+      <div class="kpi">
+        <div class="label">Total Income</div>
+        <div class="value positive" th:text="'&#8377;' + ${fmtIncome}">&#8377;0.00</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Total Expenses</div>
+        <div class="value negative" th:text="'&#8377;' + ${fmtExpenses}">&#8377;0.00</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Net Savings</div>
+        <div th:class="${savingsPositive} ? 'value positive' : 'value negative'"
+             th:text="'&#8377;' + ${fmtSavings}">&#8377;0.00</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INSIGHTS -->
+  <div class="section" th:if="${savingsInsight != null or topCatInsight != null or accountCount != null}">
+    <h2>Insights</h2>
+
+    <div class="insight-box" th:if="${savingsInsight != null}">
+      <div class="insight-title">Savings Rate</div>
+      <span th:text="${savingsInsight}">insight</span>
+    </div>
+
+    <div class="insight-box" th:if="${topCatInsight != null}">
+      <div class="insight-title">Biggest Spending Category</div>
+      <span th:text="${topCatInsight}">insight</span>
+    </div>
+
+    <div class="insight-box" th:if="${accountCount != null}">
+      <div class="insight-title">Account Coverage</div>
+      You have <strong th:text="${accountCount}">N</strong> active account(s) tracked.
+      Keep an emergency fund of 3&ndash;6 months of expenses readily accessible.
+    </div>
+  </div>
+
+  <!-- TOP EXPENSE CATEGORIES TABLE + BAR CHART -->
+  <div class="section" th:if="${fmtCats != null and not #lists.isEmpty(fmtCats)}">
+    <h2>Top Expense Categories</h2>
+    <table class="dt">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Amount</th>
+          <th>Txns</th>
+          <th style="width:30%">Share</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!--
+          fmtCats is a List<String[]>
+          [0]=name  [1]=amount  [2]=txnCount  [3]=percentage  [4]=barWidth
+        -->
+        <tr th:each="cat,s : ${fmtCats}">
+          <td th:text="${cat[0]}">Category</td>
+          <td th:text="'&#8377;' + ${cat[1]}">&#8377;0</td>
+          <td th:text="${cat[2]}">0</td>
+          <td>
+            <div class="bar-bg">
+              <div th:class="${s.index % 2 == 0} ? 'bar-fill' : 'bar-alt'"
+                   th:style="'width:' + ${cat[4]}"></div>
+            </div>
+            <span style="font-size:11px;color:#57606a;" th:text="${cat[3]}">0%</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- EXPENSES BY CATEGORY MAP (fallback when no topExpenseCategories) -->
+  <div class="section"
+       th:if="${report.expensesByCategory != null
+               and not #maps.isEmpty(report.expensesByCategory)
+               and (fmtCats == null or #lists.isEmpty(fmtCats))}">
+    <h2>Expenses by Category</h2>
+    <table class="dt">
+      <thead><tr><th>Category</th><th>Amount</th></tr></thead>
+      <tbody>
+        <tr th:each="entry : ${report.expensesByCategory}">
+          <td th:text="${entry.key}">Cat</td>
+          <td th:text="'&#8377;' + ${entry.value}">&#8377;0</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- DAILY TREND SVG LINE CHART -->
+  <!--
+    chartPoints is String[2]: [0]=income polyline points  [1]=expense polyline points
+    All pixel maths was done in ReportEmailService.buildChartPoints().
+    Chart area: 580×170 px  (MARGIN_L=40, MARGIN_T=20, CHART_W=540, CHART_H=120, label+legend=30)
+  -->
+  <div class="section" th:if="${chartPoints != null}">
+    <h2>Daily Trend</h2>
+    <div style="overflow-x:auto;">
+      <!--
+        Layout (all px):
+          MARGIN_L=40  CHART_W=540  → plot runs x: 40..580
+          MARGIN_T=20  CHART_H=120  → plot runs y: 20 (top) .. 140 (zero baseline)
+          Below plot: x-labels at y=155, legend at y=165/174
+          Total SVG height = 185
+      -->
+      <svg xmlns="http://www.w3.org/2000/svg" width="590" height="185" style="display:block;">
+
+        <!-- gridlines: top / mid / baseline -->
+        <line x1="40" y1="20"  x2="580" y2="20"  stroke="#e5e7eb" stroke-width="1"/>
+        <line x1="40" y1="80"  x2="580" y2="80"  stroke="#e5e7eb" stroke-width="1" stroke-dasharray="4,4"/>
+        <line x1="40" y1="140" x2="580" y2="140" stroke="#e5e7eb" stroke-width="1"/>
+
+        <!--
+          Y labels sit to the LEFT of the plot (x="36", text-anchor="end").
+          Baseline y is offset +3 from the gridline y so the text baseline
+          sits at the line (SVG text y = baseline, not top of glyph).
+            top gridline  y=20  → label y=20+3=23  but we nudge to 21 so it sits just above
+            mid gridline  y=80  → label y=83
+            zero baseline y=140 → label y=143
+        -->
+        <text x="36" y="21"  text-anchor="end" font-size="9" fill="#57606a" th:text="'&#8377;' + ${chartYMax}">max</text>
+        <text x="36" y="81"  text-anchor="end" font-size="9" fill="#57606a" th:text="'&#8377;' + ${chartYMid}">mid</text>
+        <text x="36" y="143" text-anchor="end" font-size="9" fill="#57606a">&#8377;0</text>
+
+        <!-- income line (green) -->
+        <polyline th:attr="points=${chartPoints[0]}"
+                  fill="none" stroke="#16a34a" stroke-width="2"
+                  stroke-linejoin="round" stroke-linecap="round"/>
+
+        <!-- expense line (red) -->
+        <polyline th:attr="points=${chartPoints[1]}"
+                  fill="none" stroke="#dc2626" stroke-width="2"
+                  stroke-linejoin="round" stroke-linecap="round"/>
+
+        <!--
+          X labels: start=x40, mid=x310 (centre of plot), end=x580.
+          y=155 leaves a 15px gap below the baseline gridline at y=140.
+        -->
+        <text x="40"  y="155" text-anchor="start"  font-size="9" fill="#57606a" th:text="${trendFirst}">start</text>
+        <text th:if="${trendMid != null}"
+              x="310" y="155" text-anchor="middle" font-size="9" fill="#57606a" th:text="${trendMid}">mid</text>
+        <text x="580" y="155" text-anchor="end"    font-size="9" fill="#57606a" th:text="${trendLast}">end</text>
+
+        <!-- legend -->
+        <rect x="40"  y="165" width="10" height="10" fill="#16a34a" rx="2"/>
+        <text x="54"  y="174" font-size="10" fill="#57606a">Income</text>
+        <rect x="115" y="165" width="10" height="10" fill="#dc2626" rx="2"/>
+        <text x="129" y="174" font-size="10" fill="#57606a">Expenses</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ACCOUNT BALANCES -->
+  <!--
+    fmtAccounts is List<String[]>: [0]=accountName  [1]=formattedBalance  [2]=badgeCssClass
+  -->
+  <div class="section" th:if="${fmtAccounts != null and not #lists.isEmpty(fmtAccounts)}">
+    <h2>Account Balances</h2>
+    <table class="dt">
+      <thead><tr><th>Account</th><th>Current Balance</th></tr></thead>
+      <tbody>
+        <tr th:each="acc : ${fmtAccounts}">
+          <td th:text="${acc[0]}">Account</td>
+          <td>
+            <span th:class="'badge ' + ${acc[2]}" th:text="${acc[1]}">&#8377;0</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    This is an automated report from <strong>Finance Tracker</strong>. Do not reply to this email.
+  </div>
+
+</div>
+</body>
+</html>

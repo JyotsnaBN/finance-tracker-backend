@@ -1,9 +1,12 @@
 package com.financetracker.controller;
 
 import com.financetracker.dto.FailedTransactionDTO;
+import com.financetracker.dto.TransactionDTO;
 import com.financetracker.model.FailedTransaction;
+import com.financetracker.model.TransactionSource;
 import com.financetracker.repository.FailedTransactionRepository;
 import com.financetracker.security.SecurityUtils;
+import com.financetracker.service.TransactionService;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +25,9 @@ public class FailedTransactionController {
 
     @Autowired
     private FailedTransactionRepository failedTransactionRepository;
+
+    @Autowired
+    private TransactionService transactionService;
 
     @GetMapping
     public ResponseEntity<List<FailedTransactionDTO>> getFailedTransactions(
@@ -58,8 +64,8 @@ public class FailedTransactionController {
     @PostMapping("/{id}/resolve")
     public ResponseEntity<Void> resolveFailedTransaction(
             @PathVariable Long id,
-            @RequestParam Long transactionId) {
-        log.info("Resolving failed transaction: {} with transaction: {}", id, transactionId);
+            @RequestParam(required = false) UUID accountId) {
+        log.info("Resolving failed transaction: {}, accountId={}", id, accountId);
         UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
 
         FailedTransaction failed = failedTransactionRepository.findById(id)
@@ -68,12 +74,33 @@ public class FailedTransactionController {
             return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
         }
 
-        failed.setResolved(true);
-        failed.setResolvedTransactionId(transactionId);
-        failedTransactionRepository.save(failed);
+        // Cannot auto-resolve without an accountId — return 422 so future UI can handle it
+        if (accountId == null) {
+            log.warn("Cannot auto-resolve failed transaction {} — accountId not provided", id);
+            return ResponseEntity.unprocessableEntity().build();
+        }
 
-        log.info("Failed transaction {} resolved successfully", id);
-        return ResponseEntity.ok().build();
+        // Build a TransactionDTO from the stored parsed data and create the transaction
+        TransactionDTO dto = TransactionDTO.builder()
+                .accountId(accountId)
+                .amount(failed.getAmount())
+                .transactionType(failed.getTransactionType())
+                .transactionDate(failed.getTransactionDate())
+                .description(failed.getDescription())
+                .source(TransactionSource.MANUAL) // resolved manually
+                .build();
+
+        try {
+            TransactionDTO created = transactionService.createTransaction(dto);
+            failed.setResolved(true);
+            failed.setResolvedTransactionId(created.getId());
+            failedTransactionRepository.save(failed);
+            log.info("Failed transaction {} resolved → transaction {}", id, created.getId());
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            log.error("Failed to auto-resolve transaction {}: {}", id, e.getMessage());
+            return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 
     @DeleteMapping("/{id}")
