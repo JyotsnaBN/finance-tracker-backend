@@ -13,8 +13,8 @@ jobs:
       - name: Login and obtain JWT
         id: auth
         env:
-          LOGIN_EMAIL: ${{ secrets.PROD_REPORT_USER_EMAIL }}
-          LOGIN_PASSWORD: ${{ secrets.PROD_REPORT_USER_PASSWORD }}
+          LOGIN_EMAIL: ${{ secrets.REPORT_USER_EMAIL }}
+          LOGIN_PASSWORD: ${{ secrets.REPORT_USER_PASSWORD }}
         run: |
           BODY=$(jq -n --arg e "$LOGIN_EMAIL" --arg p "$LOGIN_PASSWORD" \
             '{"email":$e,"password":$p}')
