@@ -70,6 +70,16 @@ public class AccountController {
         return ResponseEntity.ok(accountService.getBalanceHistory(id, startDate, endDate, interval));
     }
 
+    @PostMapping("/{id}/recalculate-balance")
+    public ResponseEntity<AccountDTO> recalculateBalance(@PathVariable UUID id) {
+        UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
+        AccountDTO account = accountService.getAccountById(id);
+        if (!authenticatedUserId.equals(account.getUserId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        return ResponseEntity.ok(accountService.recalculateBalance(id));
+    }
+
     @PostMapping
     public ResponseEntity<AccountDTO> createAccount(@Valid @RequestBody AccountDTO dto) {
         // Always use the authenticated user's ID — never trust the client-supplied userId

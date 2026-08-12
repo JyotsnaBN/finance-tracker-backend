@@ -21,30 +21,34 @@ public class ReportController {
     @GetMapping("/summary")
     public ResponseEntity<ReportDTO> getSummaryReport(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(defaultValue = "false") boolean sendEmail) {
         UUID userId = SecurityUtils.getAuthenticatedUserId();
-        return ResponseEntity.ok(reportService.getSummaryReport(userId, startDate, endDate));
+        return ResponseEntity.ok(reportService.getSummaryReport(userId, startDate, endDate, sendEmail));
     }
 
     @GetMapping("/income-expense")
     public ResponseEntity<ReportDTO> getIncomeExpenseReport(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(defaultValue = "false") boolean sendEmail) {
         UUID userId = SecurityUtils.getAuthenticatedUserId();
-        return ResponseEntity.ok(reportService.getIncomeExpenseReport(userId, startDate, endDate));
+        return ResponseEntity.ok(reportService.getIncomeExpenseReport(userId, startDate, endDate, sendEmail));
     }
 
     @GetMapping("/category-breakdown")
     public ResponseEntity<ReportDTO> getCategoryBreakdownReport(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(defaultValue = "false") boolean sendEmail) {
         UUID userId = SecurityUtils.getAuthenticatedUserId();
-        return ResponseEntity.ok(reportService.getCategoryBreakdownReport(userId, startDate, endDate));
+        return ResponseEntity.ok(reportService.getCategoryBreakdownReport(userId, startDate, endDate, sendEmail));
     }
 
     @GetMapping("/account-balances")
-    public ResponseEntity<ReportDTO> getAccountBalanceReport() {
+    public ResponseEntity<ReportDTO> getAccountBalanceReport(
+            @RequestParam(defaultValue = "false") boolean sendEmail) {
         UUID userId = SecurityUtils.getAuthenticatedUserId();
-        return ResponseEntity.ok(reportService.getAccountBalanceReport(userId));
+        return ResponseEntity.ok(reportService.getAccountBalanceReport(userId, sendEmail));
     }
 }

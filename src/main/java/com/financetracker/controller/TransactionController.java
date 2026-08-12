@@ -32,8 +32,7 @@ public class TransactionController {
     public ResponseEntity<TransactionDTO> getTransactionById(@PathVariable Long id) {
         UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
         TransactionDTO transaction = transactionService.getTransactionById(id);
-        // accountId in TransactionDTO is mapped from account.user.id (see EntityMapper)
-        if (!authenticatedUserId.equals(transaction.getAccountId())) {
+        if (!authenticatedUserId.equals(transaction.getUserId())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         return ResponseEntity.ok(transaction);
@@ -57,7 +56,7 @@ public class TransactionController {
             @Valid @RequestBody TransactionDTO dto) {
         UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
         TransactionDTO existing = transactionService.getTransactionById(id);
-        if (!authenticatedUserId.equals(existing.getAccountId())) {
+        if (!authenticatedUserId.equals(existing.getUserId())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         return ResponseEntity.ok(transactionService.updateTransaction(id, dto));
@@ -67,7 +66,7 @@ public class TransactionController {
     public ResponseEntity<Void> deleteTransaction(@PathVariable Long id) {
         UUID authenticatedUserId = SecurityUtils.getAuthenticatedUserId();
         TransactionDTO existing = transactionService.getTransactionById(id);
-        if (!authenticatedUserId.equals(existing.getAccountId())) {
+        if (!authenticatedUserId.equals(existing.getUserId())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         transactionService.deleteTransaction(id);

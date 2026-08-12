@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import jakarta.persistence.JoinColumn;
@@ -26,6 +27,7 @@ import lombok.Setter;
 
 @Entity
 @Table(name = "transactions")
+@SQLRestriction("is_deleted = false")
 @Getter @Setter @Builder
 @NoArgsConstructor @AllArgsConstructor
 public class Transaction {

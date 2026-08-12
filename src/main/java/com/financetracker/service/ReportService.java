@@ -6,6 +6,7 @@ import com.financetracker.model.Transaction;
 import com.financetracker.model.TransactionType;
 import com.financetracker.repository.AccountRepository;
 import com.financetracker.repository.TransactionRepository;
+import com.financetracker.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,9 +27,11 @@ public class ReportService {
 
     private final TransactionRepository transactionRepository;
     private final AccountRepository accountRepository;
+    private final UserRepository userRepository;
+    private final ReportEmailService reportEmailService;
 
     @Transactional(readOnly = true)
-    public ReportDTO getSummaryReport(UUID userId, LocalDate startDate, LocalDate endDate) {
+    public ReportDTO getSummaryReport(UUID userId, LocalDate startDate, LocalDate endDate, boolean sendEmail) {
         log.debug("Generating summary report for user: {} from {} to {}", userId, startDate, endDate);
 
         Instant start = startDate.atStartOfDay().toInstant(ZoneOffset.UTC);
@@ -42,7 +45,7 @@ public class ReportService {
                 transactionRepository.getTotalByUserAndTypeAndDateRange(userId, TransactionType.DEBIT, start, end)
         );
 
-        return ReportDTO.builder()
+        ReportDTO report = ReportDTO.builder()
                 .startDate(startDate)
                 .endDate(endDate)
                 .reportType("SUMMARY")
@@ -55,10 +58,15 @@ public class ReportService {
                 .topExpenseCategories(getTopExpenseCategories(userId, startDate, endDate))
                 .balanceByAccount(getBalanceByAccount(userId))
                 .build();
+
+        if (sendEmail) {
+            dispatchEmail(userId, report);
+        }
+        return report;
     }
 
     @Transactional(readOnly = true)
-    public ReportDTO getIncomeExpenseReport(UUID userId, LocalDate startDate, LocalDate endDate) {
+    public ReportDTO getIncomeExpenseReport(UUID userId, LocalDate startDate, LocalDate endDate, boolean sendEmail) {
         log.debug("Generating income expense report for user: {} from {} to {}", userId, startDate, endDate);
 
         Instant start = startDate.atStartOfDay().toInstant(ZoneOffset.UTC);
@@ -72,7 +80,7 @@ public class ReportService {
                 transactionRepository.getTotalByUserAndTypeAndDateRange(userId, TransactionType.DEBIT, start, end)
         );
 
-        return ReportDTO.builder()
+        ReportDTO report = ReportDTO.builder()
                 .startDate(startDate)
                 .endDate(endDate)
                 .reportType("INCOME_EXPENSE")
@@ -81,10 +89,15 @@ public class ReportService {
                 .netSavings(totalIncome.subtract(totalExpenses))
                 .dailyTrends(getDailyTrends(userId, startDate, endDate))
                 .build();
+
+        if (sendEmail) {
+            dispatchEmail(userId, report);
+        }
+        return report;
     }
 
     @Transactional(readOnly = true)
-    public ReportDTO getCategoryBreakdownReport(UUID userId, LocalDate startDate, LocalDate endDate) {
+    public ReportDTO getCategoryBreakdownReport(UUID userId, LocalDate startDate, LocalDate endDate, boolean sendEmail) {
         log.debug("Generating category breakdown report for user: {} from {} to {}", userId, startDate, endDate);
 
         Instant start = startDate.atStartOfDay().toInstant(ZoneOffset.UTC);
@@ -98,7 +111,7 @@ public class ReportService {
                 transactionRepository.getTotalByUserAndTypeAndDateRange(userId, TransactionType.DEBIT, start, end)
         );
 
-        return ReportDTO.builder()
+        ReportDTO report = ReportDTO.builder()
                 .startDate(startDate)
                 .endDate(endDate)
                 .reportType("CATEGORY_BREAKDOWN")
@@ -108,16 +121,35 @@ public class ReportService {
                 .expensesByCategory(getExpenseCategoryMap(userId, start, end))
                 .topExpenseCategories(getTopExpenseCategories(userId, startDate, endDate))
                 .build();
+
+        if (sendEmail) {
+            dispatchEmail(userId, report);
+        }
+        return report;
     }
 
     @Transactional(readOnly = true)
-    public ReportDTO getAccountBalanceReport(UUID userId) {
+    public ReportDTO getAccountBalanceReport(UUID userId, boolean sendEmail) {
         log.debug("Generating account balance report for user: {}", userId);
 
-        return ReportDTO.builder()
+        ReportDTO report = ReportDTO.builder()
                 .reportType("ACCOUNT_BALANCES")
                 .balanceByAccount(getBalanceByAccount(userId))
                 .build();
+
+        if (sendEmail) {
+            dispatchEmail(userId, report);
+        }
+        return report;
+    }
+
+    // ── private helpers ─────────────────────────────────────────────────────────
+
+    private void dispatchEmail(UUID userId, ReportDTO report) {
+        userRepository.findById(userId).ifPresentOrElse(
+                user -> reportEmailService.sendReportAsync(user.getEmail(), report),
+                () -> log.warn("Cannot send report email: user {} not found", userId)
+        );
     }
 
     private Map<String, BigDecimal> getExpenseCategoryMap(UUID userId, Instant start, Instant end) {

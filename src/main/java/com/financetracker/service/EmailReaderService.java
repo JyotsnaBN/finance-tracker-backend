@@ -68,6 +68,9 @@ public class EmailReaderService {
     
     @Autowired
     private AccountRepository accountRepository;
+
+    @Autowired
+    private AccountService accountService;
     
     @Autowired
     private FailedTransactionRepository failedTransactionRepository;
@@ -344,11 +347,7 @@ public class EmailReaderService {
     }
     
     private Credential getCredentials(final NetHttpTransport HTTP_TRANSPORT) throws IOException {
-        InputStream in = EmailReaderService.class.getResourceAsStream(CREDENTIALS_FILE_PATH);
-        if (in == null) {
-            throw new FileNotFoundException("Resource not found: " + CREDENTIALS_FILE_PATH);
-        }
-        GoogleClientSecrets clientSecrets = GoogleClientSecrets.load(JSON_FACTORY, new InputStreamReader(in));
+        GoogleClientSecrets clientSecrets = getClientSecrets();
         
         GoogleAuthorizationCodeFlow flow = new GoogleAuthorizationCodeFlow.Builder(
                 HTTP_TRANSPORT, JSON_FACTORY, clientSecrets, SCOPES)
@@ -409,11 +408,20 @@ public class EmailReaderService {
     }
     
     private GoogleClientSecrets getClientSecrets() throws IOException {
+        // Prefer the classpath resource (bundled in JAR during local builds).
         InputStream in = EmailReaderService.class.getResourceAsStream(CREDENTIALS_FILE_PATH);
-        if (in == null) {
-            throw new FileNotFoundException("Resource not found: " + CREDENTIALS_FILE_PATH);
+        if (in != null) {
+            return GoogleClientSecrets.load(JSON_FACTORY, new InputStreamReader(in));
         }
-        return GoogleClientSecrets.load(JSON_FACTORY, new InputStreamReader(in));
+        // Fallback for production (Render): read from GOOGLE_CREDENTIALS_JSON env var.
+        String credentialsJson = System.getenv("GOOGLE_CREDENTIALS_JSON");
+        if (credentialsJson != null && !credentialsJson.isBlank()) {
+            return GoogleClientSecrets.load(JSON_FACTORY,
+                    new InputStreamReader(new java.io.ByteArrayInputStream(
+                            credentialsJson.getBytes(java.nio.charset.StandardCharsets.UTF_8))));
+        }
+        throw new FileNotFoundException(
+                "credentials.json not found on classpath and GOOGLE_CREDENTIALS_JSON env var is not set");
     }
 
     public void processDeliveryEmailsForAllUsers() {
@@ -759,6 +767,12 @@ public class EmailReaderService {
             }
 
             Transaction savedTransaction = transactionRepository.save(transaction);
+            // Update the account's running balance immediately after save
+            accountService.applyTransactionDelta(
+                savedTransaction.getAccount(),
+                savedTransaction.getAmount(),
+                savedTransaction.getTransactionType(),
+                false);
             log.info("Transaction saved successfully - ID: {}, Amount: {}, User: {}",
                 savedTransaction.getId(), savedTransaction.getAmount(), user.getId());
             return true;

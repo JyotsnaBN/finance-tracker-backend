@@ -4,6 +4,7 @@ import com.financetracker.dto.TransactionDTO;
 import com.financetracker.model.Account;
 import com.financetracker.model.Category;
 import com.financetracker.model.Transaction;
+import com.financetracker.model.TransactionType;
 import com.financetracker.model.User;
 import com.financetracker.repository.AccountRepository;
 import com.financetracker.repository.CategoryRepository;
@@ -20,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -37,6 +39,7 @@ public class TransactionService {
     private final EntityMapper entityMapper;
     private final UserRepository userRepository;
     private final AccountResolutionService accountResolutionService;
+    private final AccountService accountService;
     
     @Transactional(readOnly = true)
     public List<TransactionDTO> getAllTransactions() {
@@ -107,6 +110,7 @@ public class TransactionService {
                 .build();
             
             Transaction saved = transactionRepository.save(transaction);
+            accountService.applyTransactionDelta(account, saved.getAmount(), saved.getTransactionType(), false);
             log.info("Transaction created successfully with id: {}", saved.getId());
             
             return entityMapper.toTransactionDTO(saved);
@@ -196,13 +200,22 @@ public class TransactionService {
         }
         
         try {
+            // Capture old values before overwriting
+            BigDecimal oldAmount = existing.getAmount();
+            TransactionType oldType = existing.getTransactionType();
+
             existing.setAmount(dto.getAmount());
             existing.setTransactionType(dto.getTransactionType());
             existing.setDescription(dto.getDescription());
             existing.setTransactionDate(dto.getTransactionDate());
             
             Transaction updated = transactionRepository.save(existing);
-            log.info("Transaction updated successfully: {}", id);
+
+            // Reverse the old effect, then apply the new one
+            Account account = updated.getAccount();
+            accountService.applyTransactionDelta(account, oldAmount, oldType, true);
+            accountService.applyTransactionDelta(account, updated.getAmount(), updated.getTransactionType(), false);
+            log.info("Transaction updated and balance reconciled: {}", id);
             
             return entityMapper.toTransactionDTO(updated);
         } catch (Exception e) {
@@ -213,15 +226,19 @@ public class TransactionService {
     
     @Transactional
     public void deleteTransaction(Long id) {
-        log.info("Deleting transaction with id: {}", id);
+        log.info("Soft-deleting transaction with id: {}", id);
         
-        if (!transactionRepository.existsById(id)) {
-            throw new RuntimeException("Transaction not found");
-        }
+        Transaction existing = transactionRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Transaction not found"));
         
         try {
-            transactionRepository.deleteById(id);
-            log.info("Transaction deleted successfully: {}", id);
+            // Reverse the balance effect before marking deleted
+            accountService.applyTransactionDelta(
+                existing.getAccount(), existing.getAmount(), existing.getTransactionType(), true);
+
+            existing.setIsDeleted(true);
+            transactionRepository.save(existing);
+            log.info("Transaction soft-deleted successfully: {}", id);
         } catch (Exception e) {
             log.error("Failed to delete transaction {}: {}", id, e.getMessage(), e);
             throw new RuntimeException("Failed to delete transaction", e);

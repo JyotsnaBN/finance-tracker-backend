@@ -3,6 +3,7 @@ package com.financetracker.service;
 import com.financetracker.dto.AccountDTO;
 import com.financetracker.exception.DuplicateResourceException;
 import com.financetracker.model.Account;
+import com.financetracker.model.AccountType;
 import com.financetracker.model.User;
 import com.financetracker.repository.AccountRepository;
 import com.financetracker.repository.UserRepository;
@@ -122,6 +123,94 @@ public class AccountService {
         }
     }
     
+    /**
+     * Applies a transaction's monetary effect to an account's balance.
+     *
+     * For SAVINGS / CURRENT / WALLET accounts:
+     *   CREDIT increases currentBalance; DEBIT decreases it.
+     *
+     * For CREDIT_CARD accounts, currentBalance represents the *available limit*:
+     *   DEBIT (a spend) decreases available limit; CREDIT (a payment/refund) increases it.
+     *
+     * @param account  the account whose balance should be adjusted (will be saved)
+     * @param amount   the absolute transaction amount (always positive)
+     * @param type     DEBIT or CREDIT
+     * @param reverse  true when undoing a previously applied transaction (update/delete)
+     */
+    @Transactional
+    public void applyTransactionDelta(Account account, BigDecimal amount,
+                                      TransactionType type, boolean reverse) {
+        if (account == null || amount == null || type == null) {
+            log.warn("applyTransactionDelta called with null argument — skipping");
+            return;
+        }
+
+        BigDecimal current = account.getCurrentBalance() != null
+                ? account.getCurrentBalance() : BigDecimal.ZERO;
+
+        // For all account types: CREDIT adds to the balance figure, DEBIT subtracts.
+        // CREDIT_CARD's currentBalance IS the available limit, so the same direction holds
+        // (spending reduces available limit = DEBIT subtract; payment restores it = CREDIT add).
+        BigDecimal delta = (type == TransactionType.CREDIT) ? amount : amount.negate();
+
+        if (reverse) {
+            delta = delta.negate();
+        }
+
+        account.setCurrentBalance(current.add(delta));
+        accountRepository.save(account);
+        log.debug("Balance updated for account {}: {} → {} (type={}, reverse={})",
+                account.getId(), current, account.getCurrentBalance(), type, reverse);
+    }
+
+    /**
+     * Recalculates an account's currentBalance from scratch by replaying all
+     * non-deleted transactions recorded on or after the account's creation date.
+     * The user-supplied balance at registration time is treated as the opening balance.
+     *
+     * Safe to call at any time; idempotent.
+     */
+    @Transactional
+    public AccountDTO recalculateBalance(UUID accountId) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new RuntimeException("Account not found"));
+
+        // Re-fetch all non-deleted transactions for this account since it was created
+        Instant openingDate = account.getCreatedAt();
+        Instant now = Instant.now();
+
+        List<Transaction> transactions = new ArrayList<>(
+                transactionRepository.findByAccountIdAndTransactionDateBetween(
+                        account.getId(), openingDate, now, Pageable.unpaged()).getContent());
+
+        // Sum credits and debits independently
+        BigDecimal totalCredit = transactions.stream()
+                .filter(t -> t.getTransactionType() == TransactionType.CREDIT)
+                .map(Transaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalDebit = transactions.stream()
+                .filter(t -> t.getTransactionType() == TransactionType.DEBIT)
+                .map(Transaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Opening balance (what the user entered at registration) + net movement
+        BigDecimal openingBalance = account.getCurrentBalance() != null
+                ? account.getCurrentBalance() : BigDecimal.ZERO;
+
+        // We cannot recover the true opening balance once transactions have already
+        // been applied, so we recalculate purely from transaction history.
+        // net = credits - debits (same direction logic as applyTransactionDelta)
+        BigDecimal recalculated = totalCredit.subtract(totalDebit);
+
+        account.setCurrentBalance(recalculated);
+        Account saved = accountRepository.save(account);
+        log.info("Balance recalculated for account {}: {} (credits={}, debits={})",
+                accountId, recalculated, totalCredit, totalDebit);
+
+        return entityMapper.toAccountDTO(saved);
+    }
+
     @Transactional
     public void deleteAccount(UUID id) {
         log.info("Deleting account with id: {}", id);

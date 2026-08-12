@@ -36,6 +36,7 @@ public class SmsIngestionService {
     private final FailedTransactionRepository failedTransactionRepository;
     private final UserRepository userRepository;
     private final EntityMapper entityMapper;
+    private final AccountService accountService;
 
     /**
      * Ingests a raw SMS body for {@code userId}.
@@ -93,8 +94,9 @@ public class SmsIngestionService {
             throw new RuntimeException("Duplicate transaction detected for SMS");
         }
 
-        // Step 6 — save
+        // Step 6 — save and update account balance
         Transaction saved = transactionRepository.save(transaction);
+        accountService.applyTransactionDelta(account, saved.getAmount(), saved.getTransactionType(), false);
         log.info("SMS transaction saved: id={} for user {}", saved.getId(), userId);
         return entityMapper.toTransactionDTO(saved);
     }
